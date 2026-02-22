@@ -3,7 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
 import hashlib
-from db import insert_document
+from db import insert_document, is_recently_collected
 
 SEARCH_QUERY = "artificial intelligence OR large language model OR transformer"
 
@@ -37,6 +37,10 @@ def collect_arxiv(max_results=20):
 
     for paper in search.results():
         description = paper.summary.strip()
+
+        if is_recently_collected(paper.entry_id):
+            print(f"[arXiv] Ignoré (déjà collecté): {paper.entry_id}")
+            continue
 
         html_url = paper.entry_id.replace("/abs/", "/html/")
         content = fetch_arxiv_content(html_url)

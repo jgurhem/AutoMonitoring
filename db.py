@@ -11,6 +11,20 @@ def get_connection():
         password=os.getenv("PG_PASSWORD"),
     )
 
+def is_recently_collected(url: str) -> bool:
+    query = """
+    SELECT 1 FROM documents
+    WHERE url = %(url)s
+    AND collected_at >= NOW() - INTERVAL '1 month'
+    LIMIT 1;
+    """
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query, {"url": url})
+            return cur.fetchone() is not None
+    conn.close()
+
 def insert_document(doc: dict):
     query = """
     INSERT INTO documents (
@@ -23,7 +37,19 @@ def insert_document(doc: dict):
         %(categories)s, %(language)s, %(stars)s,
         %(published_at)s, %(updated_at)s, %(collected_at)s, %(raw)s
     )
-    ON CONFLICT (id) DO NOTHING;
+    ON CONFLICT (id) DO UPDATE SET
+        title = EXCLUDED.title,
+        authors = EXCLUDED.authors,
+        url = EXCLUDED.url,
+        description = EXCLUDED.description,
+        content = EXCLUDED.content,
+        categories = EXCLUDED.categories,
+        language = EXCLUDED.language,
+        stars = EXCLUDED.stars,
+        published_at = EXCLUDED.published_at,
+        updated_at = EXCLUDED.updated_at,
+        collected_at = EXCLUDED.collected_at,
+        raw = EXCLUDED.raw;
     """
 
     conn = get_connection()

@@ -2,7 +2,7 @@ import feedparser
 import trafilatura
 from datetime import datetime
 import hashlib
-from db import insert_document
+from db import insert_document, is_recently_collected
 
 RSS_FEEDS = [
     "https://www.technologyreview.com/topic/artificial-intelligence/feed/",
@@ -21,6 +21,10 @@ def collect_rss():
 
         for entry in feed.entries:
             try:
+                if is_recently_collected(entry.link):
+                    print(f"[RSS] Ignoré (déjà collecté): {entry.link}")
+                    continue
+
                 downloaded = trafilatura.fetch_url(entry.link)
                 content = trafilatura.extract(downloaded, include_comments=False)
                 if not content:
