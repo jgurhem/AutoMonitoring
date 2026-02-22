@@ -17,6 +17,11 @@ RSS_FEEDS = [
     "https://www.aiiottalk.com/feed/",
     "https://research.google/blog/rss/",
     "https://techcrunch.com/tag/artificial-intelligence/feed/",
+    "https://tldr.tech/api/rss/ai",
+    "https://tldr.tech/api/rss/tech",
+    "https://tldr.tech/api/rss/dev",
+    "https://rss.beehiiv.com/feeds/2R3C6Bt5wj.xml",
+    "https://www.actuia.com/feed/",
 ]
 
 def hash_text(text: str) -> str:
