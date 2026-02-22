@@ -12,6 +12,11 @@ DEFAULT_MAX_RESULTS = 10
 
 SEARCHES = [
     {
+        "query": "(artificial intelligence OR large language model OR transformer OR agent OR Deep Learning) AND (cat:cs.AI OR cat:cs.CL OR cat:cs.LG OR cat:cs.CV OR cat:cs.NE OR cat:cs.MA)",
+        "sort_by": arxiv.SortCriterion.SubmittedDate,
+        "max_results": 50,
+    },
+    {
         "query": "artificial intelligence OR large language model OR transformer",
         "sort_by": arxiv.SortCriterion.SubmittedDate,
         "max_results": 50,
