@@ -14,12 +14,12 @@ def get_connection():
 def insert_document(doc: dict):
     query = """
     INSERT INTO documents (
-        id, source, title, authors, url, description,
+        id, source, title, authors, url, description, content,
         categories, language, stars,
         published_at, updated_at, collected_at, raw
     )
     VALUES (
-        %(id)s, %(source)s, %(title)s, %(authors)s, %(url)s, %(description)s,
+        %(id)s, %(source)s, %(title)s, %(authors)s, %(url)s, %(description)s, %(content)s,
         %(categories)s, %(language)s, %(stars)s,
         %(published_at)s, %(updated_at)s, %(collected_at)s, %(raw)s
     )
@@ -36,6 +36,7 @@ def insert_document(doc: dict):
                 "authors": doc.get("authors"),
                 "url": doc.get("url"),
                 "description": doc.get("description"),
+                "content": doc.get("content"),
                 "categories": doc.get("categories"),
                 "language": doc.get("language"),
                 "stars": doc.get("stars"),

@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS documents (
     authors TEXT[],
     url TEXT,
     description TEXT,
+    content TEXT,
     categories TEXT[],
     language TEXT,
     stars INTEGER,
