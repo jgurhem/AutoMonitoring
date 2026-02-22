@@ -19,13 +19,13 @@ RSS_FEEDS = [
 def hash_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-def collect_rss():
+def collect_rss(max_per_feed=10):
     count = 0
 
     for feed_url in RSS_FEEDS:
         feed = feedparser.parse(feed_url)
 
-        for entry in feed.entries:
+        for entry in feed.entries[:max_per_feed]:
             try:
                 if is_recently_collected(entry.link):
                     print(f"[RSS] Ignoré (déjà collecté): {entry.link}")
