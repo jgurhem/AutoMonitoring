@@ -1,7 +1,7 @@
 import arxiv
 import requests
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 from db import insert_document, is_recently_collected
 
@@ -29,13 +29,14 @@ def fetch_arxiv_content(html_url: str) -> str | None:
 def collect_arxiv(max_results=20):
     results = []
 
+    client = arxiv.Client()
     search = arxiv.Search(
         query=SEARCH_QUERY,
         max_results=max_results,
         sort_by=arxiv.SortCriterion.SubmittedDate
     )
 
-    for paper in search.results():
+    for paper in client.results(search):
         description = paper.summary.strip()
 
         if is_recently_collected(paper.entry_id):
@@ -56,7 +57,7 @@ def collect_arxiv(max_results=20):
             "categories": paper.categories,
             "published": paper.published.isoformat(),
             "updated_at": paper.updated.isoformat(),
-            "collected_at": datetime.utcnow().isoformat(),
+            "collected_at": datetime.now(timezone.utc).isoformat(),
         })
 
     return results

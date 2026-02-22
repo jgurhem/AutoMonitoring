@@ -1,6 +1,6 @@
 import feedparser
 import trafilatura
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 from db import insert_document, is_recently_collected
 
@@ -44,7 +44,7 @@ def collect_rss():
                     "published": entry.get("published", ""),
                     "description": entry.get("summary", ""),
                     "content": content,
-                    "collected_at": datetime.utcnow().isoformat()
+                    "collected_at": datetime.now(timezone.utc).isoformat()
                 })
 
             except Exception as e:
