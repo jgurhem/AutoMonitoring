@@ -13,7 +13,6 @@ RSS_FEEDS = [
     "https://machinelearningmastery.com/blog/feed/",
     "https://www.marktechpost.com/feed/",
     "https://news.mit.edu/rss/topic/artificial-intelligence2",
-    "https://ai2people.com/feed/",
     "https://www.aiiottalk.com/feed/",
     "https://research.google/blog/rss/",
     "https://techcrunch.com/tag/artificial-intelligence/feed/",
