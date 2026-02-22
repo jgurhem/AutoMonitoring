@@ -5,7 +5,16 @@ from datetime import datetime, timezone
 import hashlib
 from db import insert_document, is_recently_collected
 
-SEARCH_QUERY = "artificial intelligence OR large language model OR transformer"
+SEARCHES = [
+    {
+        "query": "artificial intelligence OR large language model OR transformer",
+        "sort_by": arxiv.SortCriterion.SubmittedDate,
+    },
+    {
+        "query": "artificial intelligence OR large language model OR transformer",
+        "sort_by": arxiv.SortCriterion.Relevance,
+    },
+]
 
 def hash_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -27,43 +36,48 @@ def fetch_arxiv_content(html_url: str) -> str | None:
     return article.get_text(separator="\n", strip=True) if article else None
 
 def collect_arxiv(max_results=20):
-    results = []
+    count = 0
 
     client = arxiv.Client()
-    search = arxiv.Search(
-        query=SEARCH_QUERY,
-        max_results=max_results,
-        sort_by=arxiv.SortCriterion.SubmittedDate
-    )
+    seen = set()
 
-    for paper in client.results(search):
-        description = paper.summary.strip()
+    for s in SEARCHES:
+        search = arxiv.Search(
+            query=s["query"],
+            max_results=max_results,
+            sort_by=s["sort_by"],
+        )
+        for paper in client.results(search):
+            if paper.entry_id in seen:
+                continue
+            seen.add(paper.entry_id)
 
-        if is_recently_collected(paper.entry_id):
-            print(f"[arXiv] Ignoré (déjà collecté): {paper.entry_id}")
-            continue
+            description = paper.summary.strip()
 
-        html_url = paper.entry_id.replace("/abs/", "/html/")
-        content = fetch_arxiv_content(html_url)
+            if is_recently_collected(paper.entry_id):
+                print(f"[arXiv] Ignoré (déjà collecté): {paper.entry_id}")
+                continue
 
-        results.append({
-            "id": hash_text(description),
-            "source": "arxiv",
-            "title": paper.title,
-            "authors": [a.name for a in paper.authors],
-            "url": paper.entry_id,
-            "description": description,
-            "content": content,
-            "categories": paper.categories,
-            "published": paper.published.isoformat(),
-            "updated_at": paper.updated.isoformat(),
-            "collected_at": datetime.now(timezone.utc).isoformat(),
-        })
+            html_url = paper.entry_id.replace("/abs/", "/html/")
+            content = fetch_arxiv_content(html_url)
 
-    return results
+            insert_document({
+                "id": hash_text(description),
+                "source": "arxiv",
+                "title": paper.title,
+                "authors": [a.name for a in paper.authors],
+                "url": paper.entry_id,
+                "description": description,
+                "content": content,
+                "categories": paper.categories,
+                "published": paper.published.isoformat(),
+                "updated_at": paper.updated.isoformat(),
+                "collected_at": datetime.now(timezone.utc).isoformat(),
+            })
+            count += 1
+
+    return count
 
 if __name__ == "__main__":
-    docs = collect_arxiv()
-    for doc in docs:
-        insert_document(doc)
-    print(f"✅ arXiv insérés en base: {len(docs)} papiers")
+    count = collect_arxiv()
+    print(f"✅ arXiv insérés en base: {count} papiers")

@@ -14,7 +14,7 @@ def hash_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 def collect_rss():
-    articles = []
+    count = 0
 
     for feed_url in RSS_FEEDS:
         feed = feedparser.parse(feed_url)
@@ -35,7 +35,7 @@ def collect_rss():
                     [entry.author] if entry.get("author") else []
                 )
 
-                articles.append({
+                insert_document({
                     "id": hash_text(content),
                     "source": "rss",
                     "title": entry.title,
@@ -46,14 +46,13 @@ def collect_rss():
                     "content": content,
                     "collected_at": datetime.now(timezone.utc).isoformat()
                 })
+                count += 1
 
             except Exception as e:
                 print(f"[RSS] Erreur: {e}")
 
-    return articles
+    return count
 
 if __name__ == "__main__":
-    docs = collect_rss()
-    for doc in docs:
-        insert_document(doc)
-    print(f"✅ RSS insérés en base: {len(docs)} articles")
+    count = collect_rss()
+    print(f"✅ RSS insérés en base: {count} articles")
