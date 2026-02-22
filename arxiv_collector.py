@@ -4,6 +4,9 @@ from bs4 import BeautifulSoup
 from datetime import datetime, timezone
 import hashlib
 from db import insert_document, is_recently_collected
+from logger import get_logger
+
+logger = get_logger("arxiv")
 
 SEARCHES = [
     {
@@ -67,12 +70,13 @@ def collect_arxiv(max_results=20):
             description = paper.summary.strip()
 
             if is_recently_collected(paper.entry_id):
-                print(f"[arXiv] Ignoré (déjà collecté): {paper.entry_id}")
+                logger.debug("Ignoré (déjà collecté): %s", paper.entry_id)
                 continue
 
             html_url = paper.entry_id.replace("/abs/", "/html/")
             content = fetch_arxiv_content(html_url)
 
+            logger.info("Inséré: %s", paper.title)
             insert_document({
                 "id": hash_text(description),
                 "source": "arxiv",
@@ -92,4 +96,4 @@ def collect_arxiv(max_results=20):
 
 if __name__ == "__main__":
     count = collect_arxiv()
-    print(f"✅ arXiv insérés en base: {count} papiers")
+    logger.info("%d papiers insérés en base", count)

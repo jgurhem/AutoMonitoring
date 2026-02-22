@@ -3,6 +3,9 @@ import trafilatura
 from datetime import datetime, timezone
 import hashlib
 from db import insert_document, is_recently_collected
+from logger import get_logger
+
+logger = get_logger("rss")
 
 RSS_FEEDS = [
     "https://www.technologyreview.com/topic/artificial-intelligence/feed/",
@@ -28,7 +31,7 @@ def collect_rss(max_per_feed=10):
         for entry in feed.entries[:max_per_feed]:
             try:
                 if is_recently_collected(entry.link):
-                    print(f"[RSS] Ignoré (déjà collecté): {entry.link}")
+                    logger.debug("Ignoré (déjà collecté): %s", entry.link)
                     continue
 
                 downloaded = trafilatura.fetch_url(entry.link)
@@ -52,13 +55,14 @@ def collect_rss(max_per_feed=10):
                     "content": content,
                     "collected_at": datetime.now(timezone.utc).isoformat()
                 })
+                logger.info("Inséré: %s", entry.title)
                 count += 1
 
             except Exception as e:
-                print(f"[RSS] Erreur: {e}")
+                logger.error("Erreur sur %s: %s", entry.link, e)
 
     return count
 
 if __name__ == "__main__":
     count = collect_rss()
-    print(f"✅ RSS insérés en base: {count} articles")
+    logger.info("%d articles insérés en base", count)
