@@ -8,21 +8,25 @@ from logger import get_logger
 
 logger = get_logger("arxiv")
 
+DEFAULT_MAX_RESULTS = 10
+
 SEARCHES = [
     {
         "query": "artificial intelligence OR large language model OR transformer",
         "sort_by": arxiv.SortCriterion.SubmittedDate,
+        "max_results": 50,
     },
     {
         "query": "artificial intelligence OR large language model OR transformer",
         "sort_by": arxiv.SortCriterion.Relevance,
+        "max_results": 50,
     },
     {
         "query": "au:'Yann LeCun' AND cat:cs.AI",
         "sort_by": arxiv.SortCriterion.SubmittedDate,
     },
     {
-        "query": "au:'Torsten Hoefler' AND (cat:cs.AI OR cat:cs.CL or cat:cs.CL OR cat:cs.IR)",
+        "query": "au:'Torsten Hoefler'",
         "sort_by": arxiv.SortCriterion.SubmittedDate,
     },
     {
@@ -50,7 +54,7 @@ def fetch_arxiv_content(html_url: str) -> str | None:
     article = soup.find("article") or soup.find("body")
     return article.get_text(separator="\n", strip=True) if article else None
 
-def collect_arxiv(max_results=20):
+def collect_arxiv():
     count = 0
 
     client = arxiv.Client()
@@ -59,7 +63,7 @@ def collect_arxiv(max_results=20):
     for s in SEARCHES:
         search = arxiv.Search(
             query=s["query"],
-            max_results=max_results,
+            max_results=s.get("max_results", DEFAULT_MAX_RESULTS),
             sort_by=s["sort_by"],
         )
         for paper in client.results(search):
