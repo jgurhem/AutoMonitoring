@@ -1,7 +1,7 @@
 import arxiv
-import json
 from datetime import datetime
 import hashlib
+from db import insert_document
 
 SEARCH_QUERY = "artificial intelligence OR large language model OR transformer"
 
@@ -18,25 +18,25 @@ def collect_arxiv(max_results=20):
     )
 
     for paper in search.results():
-        content = paper.summary.strip()
+        description = paper.summary.strip()
 
         results.append({
-            "id": hash_text(content),
+            "id": hash_text(description),
             "source": "arxiv",
             "title": paper.title,
             "authors": [a.name for a in paper.authors],
-            "published": paper.published.isoformat(),
             "url": paper.entry_id,
-            "content": content,
+            "description": description,
             "categories": paper.categories,
-            "collected_at": datetime.utcnow().isoformat()
+            "published": paper.published.isoformat(),
+            "updated_at": paper.updated.isoformat(),
+            "collected_at": datetime.utcnow().isoformat(),
         })
 
     return results
 
 if __name__ == "__main__":
-    data = collect_arxiv()
-    with open("arxiv_output.json", "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-    print(f"✅ arXiv collecté: {len(data)} papiers")
+    docs = collect_arxiv()
+    for doc in docs:
+        insert_document(doc)
+    print(f"✅ arXiv insérés en base: {len(docs)} papiers")

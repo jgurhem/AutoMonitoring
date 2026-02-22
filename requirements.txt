@@ -1,0 +1,7 @@
+feedparser
+newspaper3k
+arxiv
+PyGithub
+requests
+psycopg2-binary
+lxml_html_clean
