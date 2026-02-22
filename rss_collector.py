@@ -29,10 +29,15 @@ def collect_rss():
                 if not description:
                     continue
 
+                authors = article.authors or (
+                    [entry.author] if entry.get("author") else []
+                )
+
                 articles.append({
                     "id": hash_text(description),
                     "source": "rss",
                     "title": entry.title,
+                    "authors": authors,
                     "url": entry.link,
                     "published": entry.get("published", ""),
                     "description": description,
