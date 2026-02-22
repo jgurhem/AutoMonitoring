@@ -7,7 +7,13 @@ from db import insert_document, is_recently_collected
 RSS_FEEDS = [
     "https://www.technologyreview.com/topic/artificial-intelligence/feed/",
     "https://towardsdatascience.com/feed",
-    "https://venturebeat.com/category/ai/feed/"
+    "https://machinelearningmastery.com/blog/feed/",
+    "https://www.marktechpost.com/feed/",
+    "https://news.mit.edu/rss/topic/artificial-intelligence2",
+    "https://ai2people.com/feed/",
+    "https://www.aiiottalk.com/feed/",
+    "https://research.google/blog/rss/",
+    "https://techcrunch.com/tag/artificial-intelligence/feed/",
 ]
 
 def hash_text(text: str) -> str:

@@ -14,6 +14,18 @@ SEARCHES = [
         "query": "artificial intelligence OR large language model OR transformer",
         "sort_by": arxiv.SortCriterion.Relevance,
     },
+    {
+        "query": "au:'Yann LeCun' AND cat:cs.AI",
+        "sort_by": arxiv.SortCriterion.SubmittedDate,
+    },
+    {
+        "query": "au:'Torsten Hoefler' AND (cat:cs.AI OR cat:cs.CL or cat:cs.CL OR cat:cs.IR)",
+        "sort_by": arxiv.SortCriterion.SubmittedDate,
+    },
+    {
+        "query": "au:'Jack Dongarra'",
+        "sort_by": arxiv.SortCriterion.SubmittedDate,
+    },
 ]
 
 def hash_text(text: str) -> str:
