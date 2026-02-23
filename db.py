@@ -1,15 +1,18 @@
 import psycopg2
 import os
 import json
+from pgvector.psycopg2 import register_vector
 
 def get_connection():
-    return psycopg2.connect(
+    conn = psycopg2.connect(
         host=os.getenv("PG_HOST"),
         port=os.getenv("PG_PORT"),
         dbname=os.getenv("PG_DB"),
         user=os.getenv("PG_USER"),
         password=os.getenv("PG_PASSWORD"),
     )
+    register_vector(conn)
+    return conn
 
 def is_recently_collected(url: str) -> bool:
     query = """
@@ -71,4 +74,34 @@ def insert_document(doc: dict):
                 "collected_at": doc.get("collected_at"),
                 "raw": json.dumps(doc)
             })
+    conn.close()
+
+def fetch_documents_without_embeddings(batch_size: int = 100) -> list[dict]:
+    query = """
+    SELECT id, title, description, content
+    FROM documents
+    WHERE embedding IS NULL
+    ORDER BY collected_at DESC
+    LIMIT %(batch_size)s;
+    """
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query, {"batch_size": batch_size})
+            rows = cur.fetchall()
+    conn.close()
+    return [
+        {"id": r[0], "title": r[1], "description": r[2], "content": r[3]}
+        for r in rows
+    ]
+
+def save_embedding(doc_id: str, embedding: list[float]):
+    import numpy as np
+    query = """
+    UPDATE documents SET embedding = %(embedding)s WHERE id = %(id)s;
+    """
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query, {"id": doc_id, "embedding": np.array(embedding)})
     conn.close()

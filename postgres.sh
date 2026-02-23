@@ -6,5 +6,6 @@ docker run -d \
   -e POSTGRES_PASSWORD=monia \
   -e POSTGRES_DB=monia \
   -p 5432:5432 \
-  -v "$(pwd)/monia_data":/var/lib/postgresql/data \
-  postgres:15
+  -v "$(pwd)/monia_data":/var/lib/postgresql \
+  -v "$(pwd)/schema.sql":/docker-entrypoint-initdb.d/schema.sql \
+  pgvector/pgvector:pg18

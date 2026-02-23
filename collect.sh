@@ -11,3 +11,4 @@ set -e
 . venv/bin/activate
 python arxiv_collector.py
 python rss_collector.py
+python embed.py
