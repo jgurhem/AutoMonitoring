@@ -105,3 +105,72 @@ def save_embedding(doc_id: str, embedding: list[float]):
         with conn.cursor() as cur:
             cur.execute(query, {"id": doc_id, "embedding": np.array(embedding)})
     conn.close()
+
+def fetch_near_duplicates(threshold: float = 0.95) -> list[dict]:
+    query = """
+    SELECT DISTINCT ON (LEAST(d1.id, d2.id), GREATEST(d1.id, d2.id))
+        d1.id AS id1, d1.title AS title1, d2.id AS id2, d2.title AS title2,
+        1 - (d1.embedding <=> d2.embedding) AS similarity
+    FROM documents d1
+    CROSS JOIN LATERAL (
+        SELECT id, title, embedding
+        FROM documents d2
+        WHERE d2.id != d1.id
+        ORDER BY d1.embedding <=> d2.embedding
+        LIMIT 1
+    ) d2
+    WHERE 1 - (d1.embedding <=> d2.embedding) > %(threshold)s
+    ORDER BY LEAST(d1.id, d2.id), GREATEST(d1.id, d2.id), similarity DESC;
+    """
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query, {"threshold": threshold})
+            rows = cur.fetchall()
+    conn.close()
+    return [
+        {"id1": r[0], "title1": r[1], "id2": r[2], "title2": r[3], "similarity": r[4]}
+        for r in rows
+    ]
+
+def fetch_novelty_scores() -> list[dict]:
+    query = """
+    SELECT d1.id, d1.title,
+        1 - (
+            SELECT d2.embedding <=> d1.embedding
+            FROM documents d2
+            WHERE d2.id != d1.id
+            ORDER BY d2.embedding <=> d1.embedding
+            LIMIT 1
+        ) AS nearest_similarity
+    FROM documents d1
+    WHERE d1.embedding IS NOT NULL;
+    """
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query)
+            rows = cur.fetchall()
+    conn.close()
+    return [
+        {"id": r[0], "title": r[1], "nearest_similarity": r[2]}
+        for r in rows
+    ]
+
+def fetch_all_embeddings() -> list[dict]:
+    import numpy as np
+    query = """
+    SELECT id, title, embedding
+    FROM documents
+    WHERE embedding IS NOT NULL;
+    """
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query)
+            rows = cur.fetchall()
+    conn.close()
+    return [
+        {"id": r[0], "title": r[1], "embedding": np.array(r[2])}
+        for r in rows
+    ]
