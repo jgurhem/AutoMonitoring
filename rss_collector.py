@@ -21,6 +21,9 @@ RSS_FEEDS = [
     "https://tldr.tech/api/rss/dev",
     "https://rss.beehiiv.com/feeds/2R3C6Bt5wj.xml",
     "https://www.actuia.com/feed/",
+    "https://www.aiplusinfo.com/feed/",
+    "https://deepmind.com/blog/feed/basic/",
+    "https://www.greatlearning.in/blog/category/artificial-intelligence/feed/",
 ]
 
 def hash_text(text: str) -> str:
