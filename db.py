@@ -160,7 +160,7 @@ def fetch_novelty_scores() -> list[dict]:
 def fetch_all_embeddings() -> list[dict]:
     import numpy as np
     query = """
-    SELECT id, title, embedding
+    SELECT id, title, embedding, published_at
     FROM documents
     WHERE embedding IS NOT NULL;
     """
@@ -171,6 +171,6 @@ def fetch_all_embeddings() -> list[dict]:
             rows = cur.fetchall()
     conn.close()
     return [
-        {"id": r[0], "title": r[1], "embedding": np.array(r[2])}
+        {"id": r[0], "title": r[1], "embedding": np.array(r[2]), "published_at": r[3]}
         for r in rows
     ]
