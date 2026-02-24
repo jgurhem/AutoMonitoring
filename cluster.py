@@ -1,6 +1,6 @@
 import logging
 import numpy as np
-import hdbscan
+from sklearn.cluster import HDBSCAN
 from collections import defaultdict
 from db import fetch_all_embeddings
 
@@ -33,7 +33,7 @@ def main():
         return
 
     matrix = np.stack([d["embedding"] for d in docs])
-    clusterer = hdbscan.HDBSCAN(min_cluster_size=3, metric="euclidean")
+    clusterer = HDBSCAN(copy=False, min_cluster_size=3, metric="euclidean")
     labels = clusterer.fit_predict(matrix)
     novelty_scores = compute_novelty_scores(matrix)
 
@@ -48,7 +48,7 @@ def main():
     for cluster_id, members in sorted(clusters.items()):
         if cluster_id == biggest_id and len(members) >= SUBCLUSTER_MIN_SIZE:
             sub_matrix = np.stack([m["embedding"] for m in members])
-            sub_labels = hdbscan.HDBSCAN(min_cluster_size=SUB_MIN_CLUSTER_SIZE, metric="euclidean").fit_predict(sub_matrix)
+            sub_labels = HDBSCAN(copy=False, min_cluster_size=SUB_MIN_CLUSTER_SIZE, metric="euclidean").fit_predict(sub_matrix)
             sub_novelty = compute_novelty_scores(sub_matrix)
 
             sub_clusters = defaultdict(list)
