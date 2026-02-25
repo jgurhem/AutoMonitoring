@@ -157,6 +157,116 @@ def fetch_novelty_scores() -> list[dict]:
         for r in rows
     ]
 
+def fetch_documents(since, source=None, has_embedding=None, search=None, limit=500) -> list[tuple]:
+    conds = ["collected_at >= %(since)s"]
+    params = {"since": since, "limit": limit}
+
+    if source:
+        conds.append("source = %(source)s")
+        params["source"] = source
+    if has_embedding is True:
+        conds.append("embedding IS NOT NULL")
+    elif has_embedding is False:
+        conds.append("embedding IS NULL")
+    if search:
+        conds.append("title ILIKE %(search)s")
+        params["search"] = f"%{search}%"
+
+    where = " AND ".join(conds)
+    query = f"""
+    SELECT id, source, title, published_at, url,
+           embedding IS NOT NULL AS has_emb
+    FROM documents
+    WHERE {where}
+    ORDER BY published_at DESC
+    LIMIT %(limit)s;
+    """
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            return cur.fetchall()
+    conn.close()
+
+
+def fetch_document(doc_id: str) -> tuple | None:
+    query = """
+    SELECT title, authors, url, description, content, categories, published_at
+    FROM documents WHERE id = %(id)s;
+    """
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query, {"id": doc_id})
+            return cur.fetchone()
+    conn.close()
+
+
+def fetch_counts() -> dict:
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM documents;")
+            total = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) FROM documents WHERE embedding IS NOT NULL;")
+            with_emb = cur.fetchone()[0]
+            cur.execute("SELECT source, COUNT(*) FROM documents GROUP BY source ORDER BY count DESC;")
+            by_source = cur.fetchall()
+    conn.close()
+    return {"total": total, "with_embedding": with_emb, "by_source": by_source}
+
+
+def fetch_daily_counts(days: int = 30) -> list[tuple]:
+    query = """
+    SELECT DATE(collected_at) AS day, source, COUNT(*)
+    FROM documents
+    WHERE collected_at >= NOW() - INTERVAL '1 day' * %(days)s
+    GROUP BY day, source
+    ORDER BY day;
+    """
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query, {"days": days})
+            return cur.fetchall()
+    conn.close()
+
+
+def fetch_arxiv_categories(limit: int = 20) -> list[tuple]:
+    query = """
+    SELECT unnest(categories) AS cat, COUNT(*) AS n
+    FROM documents
+    WHERE source = 'arxiv'
+    GROUP BY cat
+    ORDER BY n DESC
+    LIMIT %(limit)s;
+    """
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query, {"limit": limit})
+            return cur.fetchall()
+    conn.close()
+
+
+def search_similar(vec, top_k: int = 10) -> list[tuple]:
+    import numpy as np
+    query = """
+    SELECT id, source, title, url, published_at,
+           1 - (embedding <=> %(vec)s) AS similarity
+    FROM documents
+    WHERE embedding IS NOT NULL
+    ORDER BY embedding <=> %(vec)s
+    LIMIT %(k)s;
+    """
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query, {"vec": np.array(vec), "k": top_k})
+            return cur.fetchall()
+    conn.close()
+
+
 def fetch_all_embeddings() -> list[dict]:
     import numpy as np
     query = """

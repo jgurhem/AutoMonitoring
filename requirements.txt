@@ -10,3 +10,6 @@ langchain-huggingface
 sentence-transformers
 pgvector
 numpy
+streamlit
+streamlit-js-eval
+pandas
