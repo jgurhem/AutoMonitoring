@@ -1,5 +1,7 @@
 #!/bin/sh
 
+cd "$(dirname "$0")/.."
+
 docker run -d \
   --name monia \
   -e POSTGRES_USER=monia \
