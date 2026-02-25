@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS documents (
     updated_at TIMESTAMP,
     collected_at TIMESTAMP NOT NULL,
     raw JSONB,
-    embedding vector(384)
+    embedding vector(384),
+    summary TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_source ON documents(source);

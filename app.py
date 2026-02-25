@@ -158,7 +158,7 @@ elif page == "Semantic Search":
 elif page == "Processing":
     st.title("Processing")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         st.subheader("Deduplicate")
@@ -189,6 +189,14 @@ elif page == "Processing":
                     st.session_state["proc_output"] = capture_run(cluster_main)
                 finally:
                     sys.argv = old_argv
+
+    with col4:
+        st.subheader("Summarize")
+        st.write("Generate summaries using Mixtral-8x7B via Ollama (local).")
+        if st.button("Run summarize"):
+            with st.spinner("Summarizing..."):
+                from summarize import main as summarize_main
+                st.session_state["proc_output"] = capture_run(summarize_main)
 
     if "proc_output" in st.session_state:
         st.divider()

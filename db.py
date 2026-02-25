@@ -76,6 +76,34 @@ def insert_document(doc: dict):
             })
     conn.close()
 
+def fetch_documents_without_summary(batch_size: int = 10) -> list[dict]:
+    query = """
+    SELECT id, title, description, content
+    FROM documents
+    WHERE summary IS NULL
+    AND (description IS NOT NULL OR content IS NOT NULL)
+    ORDER BY collected_at DESC
+    LIMIT %(batch_size)s;
+    """
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query, {"batch_size": batch_size})
+            rows = cur.fetchall()
+    conn.close()
+    return [
+        {"id": r[0], "title": r[1], "description": r[2], "content": r[3]}
+        for r in rows
+    ]
+
+def save_summary(doc_id: str, summary: str):
+    query = "UPDATE documents SET summary = %(summary)s WHERE id = %(id)s;"
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query, {"id": doc_id, "summary": summary})
+    conn.close()
+
 def fetch_documents_without_embeddings(batch_size: int = 100) -> list[dict]:
     query = """
     SELECT id, title, description, content
