@@ -2,8 +2,8 @@ import feedparser
 import trafilatura
 from datetime import datetime, timezone
 import hashlib
-from db import insert_document, is_recently_collected
-from logger import get_logger
+from core.db import insert_document, is_recently_collected
+from core.logger import get_logger
 
 logger = get_logger("rss")
 

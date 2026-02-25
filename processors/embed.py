@@ -2,8 +2,8 @@
 """Compute and store embeddings for documents that don't have one yet."""
 
 from langchain_huggingface import HuggingFaceEmbeddings
-from db import fetch_documents_without_embeddings, save_embedding
-from logger import get_logger
+from core.db import fetch_documents_without_embeddings, save_embedding
+from core.logger import get_logger
 
 logger = get_logger("embed")
 
@@ -35,5 +35,3 @@ def run():
         logger.info("Embedded %d documents (total: %d)", len(docs), total)
 
     logger.info("Done. %d documents embedded.", total)
-
-

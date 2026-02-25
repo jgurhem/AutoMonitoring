@@ -4,7 +4,7 @@ import numpy as np
 from datetime import datetime, timezone, timedelta
 from sklearn.cluster import HDBSCAN
 from collections import defaultdict
-from db import fetch_all_embeddings
+from core.db import fetch_all_embeddings
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -88,4 +88,3 @@ def main(new: bool = False):
     n_clusters = len(clusters)
     n_noise = len(noise_docs)
     logger.info(f"Summary: {n_clusters} cluster(s), {n_noise} noise document(s)")
-

@@ -9,8 +9,8 @@ Requires:
 
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import PromptTemplate
-from db import fetch_documents_without_summary, save_summary
-from logger import get_logger
+from core.db import fetch_documents_without_summary, save_summary
+from core.logger import get_logger
 
 logger = get_logger("summarize")
 
@@ -54,5 +54,3 @@ def run():
                 logger.error("Failed %s: %s", doc["id"], e)
 
     logger.info("Done. %d documents summarized.", total)
-
-

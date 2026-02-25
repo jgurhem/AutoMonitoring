@@ -1,9 +1,9 @@
 import argparse
-from arxiv_collector import collect_arxiv
-from rss_collector import collect_rss
-from embed import run as embed_run
-from summarize import run as summarize_run
-from logger import get_logger
+from collectors.arxiv import collect_arxiv
+from collectors.rss import collect_rss
+from processors.embed import run as embed_run
+from processors.summarize import run as summarize_run
+from core.logger import get_logger
 
 logger = get_logger("collect")
 

@@ -1,5 +1,5 @@
 import logging
-from db import fetch_novelty_scores
+from core.db import fetch_novelty_scores
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
@@ -23,4 +23,3 @@ def main():
         f"Summary: {len(novel)} novel / {len(scored)} total "
         f"(threshold={NOVELTY_THRESHOLD})"
     )
-

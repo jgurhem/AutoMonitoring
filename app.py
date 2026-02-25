@@ -10,7 +10,7 @@ from streamlit_js_eval import streamlit_js_eval
 import pandas as pd
 import streamlit as st
 
-import db
+import core.db as db
 
 st.set_page_config(page_title="Monitoring", layout="wide", page_icon="📡")
 
@@ -165,7 +165,7 @@ elif page == "Processing":
         st.write("Find near-duplicate documents using cosine similarity.")
         if st.button("Run dedup"):
             with st.spinner("Finding duplicates..."):
-                from dedup import main as dedup_main
+                from processors.dedup import main as dedup_main
                 st.session_state["proc_output"] = capture_run(dedup_main)
 
     with col2:
@@ -173,7 +173,7 @@ elif page == "Processing":
         st.write("Score documents by how different they are from the rest.")
         if st.button("Run novelty"):
             with st.spinner("Computing novelty scores..."):
-                from novelty import main as novelty_main
+                from processors.novelty import main as novelty_main
                 st.session_state["proc_output"] = capture_run(novelty_main)
 
     with col3:
@@ -182,7 +182,7 @@ elif page == "Processing":
         new_only = st.checkbox("Show only new articles")
         if st.button("Run cluster"):
             with st.spinner("Clustering..."):
-                from cluster import main as cluster_main
+                from processors.cluster import main as cluster_main
                 old_argv = sys.argv
                 sys.argv = ["cluster"] + (["--new"] if new_only else [])
                 try:
@@ -195,7 +195,7 @@ elif page == "Processing":
         st.write("Generate summaries using Mixtral-8x7B via Ollama (local).")
         if st.button("Run summarize"):
             with st.spinner("Summarizing..."):
-                from summarize import main as summarize_main
+                from processors.summarize import main as summarize_main
                 st.session_state["proc_output"] = capture_run(summarize_main)
 
     if "proc_output" in st.session_state:
