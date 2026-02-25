@@ -65,25 +65,22 @@ def show_document(doc_id):
 if page == "Browse":
     st.title("Browse")
 
-    c1, c2, c3, c4 = st.columns(4)
+    c1, c2, c3 = st.columns(3)
     source = c1.selectbox("Source", ["all", "rss", "arxiv", "github"])
     days = c2.number_input("Collected last N days", min_value=1, max_value=365, value=30)
-    emb = c3.selectbox("Embedding", ["all", "yes", "no"])
-    search = c4.text_input("Search title")
+    search = c3.text_input("Search title")
 
-    has_embedding = True if emb == "yes" else (False if emb == "no" else None)
     rows = db.fetch_documents(
         since=datetime.now(timezone.utc) - timedelta(days=int(days)),
         source=source if source != "all" else None,
-        has_embedding=has_embedding,
         search=search or None,
     )
 
-    df = pd.DataFrame(rows, columns=["id", "source", "title", "published_at", "url", "has_emb"])
+    df = pd.DataFrame(rows, columns=["id", "source", "title", "published_at", "url"])
     st.caption(f"{len(df)} documents")
 
     sel = st.dataframe(
-        df[["source", "title", "published_at", "has_emb"]],
+        df[["source", "title", "published_at"]],
         on_select="rerun",
         selection_mode="single-row",
         hide_index=True,

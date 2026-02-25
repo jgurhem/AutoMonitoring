@@ -157,25 +157,20 @@ def fetch_novelty_scores() -> list[dict]:
         for r in rows
     ]
 
-def fetch_documents(since, source=None, has_embedding=None, search=None, limit=500) -> list[tuple]:
+def fetch_documents(since, source=None, search=None, limit=500) -> list[tuple]:
     conds = ["collected_at >= %(since)s"]
     params = {"since": since, "limit": limit}
 
     if source:
         conds.append("source = %(source)s")
         params["source"] = source
-    if has_embedding is True:
-        conds.append("embedding IS NOT NULL")
-    elif has_embedding is False:
-        conds.append("embedding IS NULL")
     if search:
         conds.append("title ILIKE %(search)s")
         params["search"] = f"%{search}%"
 
     where = " AND ".join(conds)
     query = f"""
-    SELECT id, source, title, published_at, url,
-           embedding IS NOT NULL AS has_emb
+    SELECT id, source, title, published_at, url
     FROM documents
     WHERE {where}
     ORDER BY published_at DESC
