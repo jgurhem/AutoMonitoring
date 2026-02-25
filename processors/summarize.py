@@ -52,5 +52,8 @@ def run():
                 total += 1
             except Exception as e:
                 logger.error("Failed %s: %s", doc["id"], e)
+                if "status code: 500" in str(e):
+                    logger.error("Model unavailable, aborting.")
+                    return
 
     logger.info("Done. %d documents summarized.", total)
