@@ -30,7 +30,7 @@ def build_body(doc: dict) -> str:
     return text[:MAX_CONTENT_CHARS]
 
 
-def main():
+def run():
     llm = OllamaLLM(model=MODEL, temperature=0.2, num_predict=256)
     chain = PROMPT | llm
 
@@ -56,5 +56,3 @@ def main():
     logger.info("Done. %d documents summarized.", total)
 
 
-if __name__ == "__main__":
-    main()

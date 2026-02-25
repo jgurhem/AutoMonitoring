@@ -16,7 +16,7 @@ def build_text(doc: dict) -> str:
     return " ".join(p.strip() for p in parts if p.strip())
 
 
-def main():
+def run():
     embedder = HuggingFaceEmbeddings(model_name=MODEL_NAME)
     total = 0
 
@@ -37,5 +37,3 @@ def main():
     logger.info("Done. %d documents embedded.", total)
 
 
-if __name__ == "__main__":
-    main()

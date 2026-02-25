@@ -102,7 +102,3 @@ def collect_arxiv():
             count += 1
 
     return count
-
-if __name__ == "__main__":
-    count = collect_arxiv()
-    logger.info("%d papiers insérés en base", count)

@@ -14,5 +14,3 @@ def main():
         )
     logger.info(f"Summary: {len(pairs)} duplicate pair(s) found (threshold={THRESHOLD})")
 
-if __name__ == "__main__":
-    main()

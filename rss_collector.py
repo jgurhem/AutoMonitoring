@@ -69,7 +69,3 @@ def collect_rss(max_per_feed=10):
                 logger.error("Erreur sur %s: %s", entry.link, e)
 
     return count
-
-if __name__ == "__main__":
-    count = collect_rss()
-    logger.info("%d articles insérés en base", count)

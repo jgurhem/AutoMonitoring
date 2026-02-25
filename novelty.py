@@ -24,5 +24,3 @@ def main():
         f"(threshold={NOVELTY_THRESHOLD})"
     )
 
-if __name__ == "__main__":
-    main()

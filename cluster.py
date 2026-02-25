@@ -1,4 +1,3 @@
-import argparse
 import logging
 import os
 import numpy as np
@@ -45,11 +44,7 @@ def log_cluster(label: str, members: list, indent: str = "", only_new: bool = Fa
     if len(visible) > PREVIEW_SIZE:
         logger.info(f"{indent}  ... and {len(visible) - PREVIEW_SIZE} more")
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--new", action="store_true", help="Only show articles published in the last RECENT_DAYS days")
-    args = parser.parse_args()
-
+def main(new: bool = False):
     docs = fetch_all_embeddings()
     if not docs:
         logger.info("No documents with embeddings found.")
@@ -81,18 +76,16 @@ def main():
             sub_noise = sub_clusters.pop(-1, [])
             logger.info(f"Cluster {cluster_id} ({len(members)} docs) [sub-clustered]:")
             for sub_id, sub_members in sorted(sub_clusters.items()):
-                log_cluster(f"  Sub-cluster {cluster_id}.{sub_id}", sub_members, indent="  ", only_new=args.new)
+                log_cluster(f"  Sub-cluster {cluster_id}.{sub_id}", sub_members, indent="  ", only_new=new)
             if sub_noise:
-                log_cluster(f"  Sub-cluster {cluster_id}.noise", sub_noise, indent="  ", only_new=args.new)
+                log_cluster(f"  Sub-cluster {cluster_id}.noise", sub_noise, indent="  ", only_new=new)
         else:
-            log_cluster(f"Cluster {cluster_id}", members, only_new=args.new)
+            log_cluster(f"Cluster {cluster_id}", members, only_new=new)
 
     if noise_docs:
-        log_cluster("Noise", noise_docs, only_new=args.new)
+        log_cluster("Noise", noise_docs, only_new=new)
 
     n_clusters = len(clusters)
     n_noise = len(noise_docs)
     logger.info(f"Summary: {n_clusters} cluster(s), {n_noise} noise document(s)")
 
-if __name__ == "__main__":
-    main()
