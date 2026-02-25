@@ -31,7 +31,7 @@ def build_body(doc: dict) -> str:
 
 
 def run():
-    llm = OllamaLLM(model=MODEL, temperature=0.2, num_predict=256)
+    llm = OllamaLLM(model=MODEL, temperature=0.2, num_predict=2048)
     chain = PROMPT | llm
 
     total = 0
