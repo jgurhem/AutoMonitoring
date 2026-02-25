@@ -16,7 +16,7 @@ logger = get_logger("summarize")
 
 MODEL = "mixtral"
 BATCH_SIZE = 10
-MAX_CONTENT_CHARS = 4000
+MAX_CONTENT_CHARS = 400000
 
 PROMPT = PromptTemplate.from_template(
     "Summarize the following article in 5 to 10 sentences. Identify key points and main contributions. Be concise and factual.\n\n"
