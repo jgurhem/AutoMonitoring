@@ -161,8 +161,25 @@ def fetch_near_duplicates(threshold: float = 0.95) -> list[dict]:
         for r in rows
     ]
 
-def fetch_novelty_scores() -> list[dict]:
-    query = """
+def fetch_novelty_scores(
+    published_since: int | None = None,
+    collected_since: int | None = None,
+    updated_since: int | None = None,
+) -> list[dict]:
+    conds = ["d1.embedding IS NOT NULL"]
+    params = {}
+    if published_since is not None:
+        conds.append("d1.published_at >= NOW() - INTERVAL '1 day' * %(published_since)s")
+        params["published_since"] = published_since
+    if collected_since is not None:
+        conds.append("d1.collected_at >= NOW() - INTERVAL '1 day' * %(collected_since)s")
+        params["collected_since"] = collected_since
+    if updated_since is not None:
+        conds.append("d1.updated_at >= NOW() - INTERVAL '1 day' * %(updated_since)s")
+        params["updated_since"] = updated_since
+
+    where = " AND ".join(conds)
+    query = f"""
     SELECT d1.id, d1.title,
         1 - (
             SELECT d2.embedding <=> d1.embedding
@@ -172,12 +189,12 @@ def fetch_novelty_scores() -> list[dict]:
             LIMIT 1
         ) AS nearest_similarity
     FROM documents d1
-    WHERE d1.embedding IS NOT NULL;
+    WHERE {where};
     """
     conn = get_connection()
     with conn:
         with conn.cursor() as cur:
-            cur.execute(query)
+            cur.execute(query, params)
             rows = cur.fetchall()
     conn.close()
     return [

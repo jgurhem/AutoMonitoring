@@ -11,7 +11,11 @@ def main():
     cluster_parser.add_argument("--new", action="store_true", help="Only show articles from the last few days")
 
     subparsers.add_parser("dedup", help="Find near-duplicate documents")
-    subparsers.add_parser("novelty", help="Score document novelty")
+
+    novelty_parser = subparsers.add_parser("novelty", help="Score document novelty")
+    novelty_parser.add_argument("--published-since", type=int, metavar="DAYS", help="Only score documents published in the last N days")
+    novelty_parser.add_argument("--collected-since", type=int, metavar="DAYS", help="Only score documents collected in the last N days")
+    novelty_parser.add_argument("--updated-since", type=int, metavar="DAYS", help="Only score documents updated in the last N days")
 
     args = parser.parse_args()
 
@@ -24,7 +28,11 @@ def main():
     elif args.command == "dedup":
         dedup_main()
     elif args.command == "novelty":
-        novelty_main()
+        novelty_main(
+            published_since=args.published_since,
+            collected_since=args.collected_since,
+            updated_since=args.updated_since,
+        )
 
 if __name__ == "__main__":
     main()
