@@ -30,8 +30,8 @@ def build_body(doc: dict) -> str:
     return text[:MAX_CONTENT_CHARS]
 
 
-def run():
-    llm = OllamaLLM(model=MODEL, temperature=0.2, num_predict=2048)
+def run(model: str = MODEL, num_predict: int = 2048):
+    llm = OllamaLLM(model=model, temperature=0.2, num_predict=num_predict)
     chain = PROMPT | llm
 
     total = 0
