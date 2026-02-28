@@ -12,6 +12,8 @@ langchain-ollama
 sentence-transformers
 pgvector
 numpy
+hdbscan
+scikit-learn
 streamlit
 streamlit-js-eval
 passlib[argon2]
