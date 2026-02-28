@@ -26,7 +26,6 @@ def is_recently_collected(url: str) -> bool:
         with conn.cursor() as cur:
             cur.execute(query, {"url": url})
             return cur.fetchone() is not None
-    conn.close()
 
 def insert_document(doc: dict):
     query = """
@@ -74,7 +73,6 @@ def insert_document(doc: dict):
                 "collected_at": doc.get("collected_at"),
                 "raw": json.dumps(doc)
             })
-    conn.close()
 
 def fetch_documents_without_summary(batch_size: int = 10) -> list[dict]:
     query = """
@@ -90,7 +88,6 @@ def fetch_documents_without_summary(batch_size: int = 10) -> list[dict]:
         with conn.cursor() as cur:
             cur.execute(query, {"batch_size": batch_size})
             rows = cur.fetchall()
-    conn.close()
     return [
         {"id": r[0], "title": r[1], "description": r[2], "content": r[3]}
         for r in rows
@@ -102,7 +99,6 @@ def save_summary(doc_id: str, summary: str):
     with conn:
         with conn.cursor() as cur:
             cur.execute(query, {"id": doc_id, "summary": summary})
-    conn.close()
 
 def fetch_summaries_since(published_since: int, novelty_threshold: float | None = None, user_id: int | None = None) -> list[dict]:
     conds = [
@@ -136,7 +132,6 @@ def fetch_summaries_since(published_since: int, novelty_threshold: float | None 
         with conn.cursor() as cur:
             cur.execute(query, params)
             rows = cur.fetchall()
-    conn.close()
     docs = [{"id": r[0], "title": r[1], "summary": r[2], "novelty_score": r[3]} for r in rows]
     if novelty_threshold is not None:
         docs = [d for d in docs if d["novelty_score"] is not None and d["novelty_score"] > novelty_threshold]
@@ -156,7 +151,6 @@ def fetch_documents_without_embeddings(batch_size: int = 100) -> list[dict]:
         with conn.cursor() as cur:
             cur.execute(query, {"batch_size": batch_size})
             rows = cur.fetchall()
-    conn.close()
     return [
         {"id": r[0], "title": r[1], "description": r[2], "content": r[3]}
         for r in rows
@@ -171,7 +165,6 @@ def save_embedding(doc_id: str, embedding: list[float]):
     with conn:
         with conn.cursor() as cur:
             cur.execute(query, {"id": doc_id, "embedding": np.array(embedding)})
-    conn.close()
 
 def fetch_near_duplicates(threshold: float = 0.95) -> list[dict]:
     query = """
@@ -194,7 +187,6 @@ def fetch_near_duplicates(threshold: float = 0.95) -> list[dict]:
         with conn.cursor() as cur:
             cur.execute(query, {"threshold": threshold})
             rows = cur.fetchall()
-    conn.close()
     return [
         {"id1": r[0], "title1": r[1], "id2": r[2], "title2": r[3], "similarity": r[4]}
         for r in rows
@@ -241,7 +233,6 @@ def fetch_novelty_scores(
         with conn.cursor() as cur:
             cur.execute(query, params)
             rows = cur.fetchall()
-    conn.close()
     return [
         {"id": r[0], "title": r[1], "nearest_similarity": r[2]}
         for r in rows
@@ -258,7 +249,6 @@ def fetch_document(doc_id: str) -> tuple | None:
         with conn.cursor() as cur:
             cur.execute(query, {"id": doc_id})
             return cur.fetchone()
-    conn.close()
 
 
 def fetch_counts() -> dict:
@@ -271,7 +261,6 @@ def fetch_counts() -> dict:
             with_emb = cur.fetchone()[0]
             cur.execute("SELECT source, COUNT(*) FROM documents GROUP BY source ORDER BY count DESC;")
             by_source = cur.fetchall()
-    conn.close()
     return {"total": total, "with_embedding": with_emb, "by_source": by_source}
 
 
@@ -288,7 +277,6 @@ def fetch_daily_counts(days: int = 30) -> list[tuple]:
         with conn.cursor() as cur:
             cur.execute(query, {"days": days})
             return cur.fetchall()
-    conn.close()
 
 
 def fetch_arxiv_categories(limit: int = 20) -> list[tuple]:
@@ -305,7 +293,6 @@ def fetch_arxiv_categories(limit: int = 20) -> list[tuple]:
         with conn.cursor() as cur:
             cur.execute(query, {"limit": limit})
             return cur.fetchall()
-    conn.close()
 
 
 def search_similar(vec, top_k: int = 10) -> list[tuple]:
@@ -323,7 +310,6 @@ def search_similar(vec, top_k: int = 10) -> list[tuple]:
         with conn.cursor() as cur:
             cur.execute(query, {"vec": np.array(vec), "k": top_k})
             return cur.fetchall()
-    conn.close()
 
 
 def fetch_all_embeddings(user_id: int | None = None) -> list[dict]:
@@ -348,7 +334,6 @@ def fetch_all_embeddings(user_id: int | None = None) -> list[dict]:
         with conn.cursor() as cur:
             cur.execute(query, params)
             rows = cur.fetchall()
-    conn.close()
     return [
         {"id": r[0], "title": r[1], "embedding": np.array(r[2]), "published_at": r[3]}
         for r in rows
@@ -368,7 +353,6 @@ def get_user_by_username(username: str) -> dict | None:
                 {"username": username},
             )
             row = cur.fetchone()
-    conn.close()
     if row is None:
         return None
     return {
@@ -388,7 +372,6 @@ def create_user(username: str, password_hash: str, is_admin: bool = False) -> in
                 {"u": username, "h": password_hash, "a": is_admin},
             )
             user_id = cur.fetchone()[0]
-    conn.close()
     return user_id
 
 
@@ -400,7 +383,6 @@ def get_all_users() -> list[dict]:
                 "SELECT id, username, is_admin, is_active, created_at FROM users ORDER BY id;"
             )
             rows = cur.fetchall()
-    conn.close()
     return [
         {"id": r[0], "username": r[1], "is_admin": r[2], "is_active": r[3], "created_at": r[4]}
         for r in rows
@@ -415,7 +397,6 @@ def set_user_active(user_id: int, active: bool):
                 "UPDATE users SET is_active = %(a)s WHERE id = %(id)s;",
                 {"id": user_id, "a": active},
             )
-    conn.close()
 
 
 def update_user_password(user_id: int, password_hash: str):
@@ -426,7 +407,6 @@ def update_user_password(user_id: int, password_hash: str):
                 "UPDATE users SET password_hash = %(h)s WHERE id = %(id)s;",
                 {"id": user_id, "h": password_hash},
             )
-    conn.close()
 
 
 def update_user_prefs(user_id: int, **prefs):
@@ -443,7 +423,6 @@ def update_user_prefs(user_id: int, **prefs):
     with conn:
         with conn.cursor() as cur:
             cur.execute(f"UPDATE users SET {set_clause} WHERE id = %(user_id)s;", updates)
-    conn.close()
 
 
 # ─── Feed / search catalog ────────────────────────────────────────────────────
@@ -461,7 +440,6 @@ def get_or_create_rss_feed(url: str, name: str | None = None) -> int:
                 {"url": url, "name": name},
             )
             return cur.fetchone()[0]
-    conn.close()
 
 
 def get_or_create_arxiv_search(query: str, max_results: int = 10) -> int:
@@ -477,7 +455,6 @@ def get_or_create_arxiv_search(query: str, max_results: int = 10) -> int:
                 {"q": query, "m": max_results},
             )
             return cur.fetchone()[0]
-    conn.close()
 
 
 def get_all_rss_feeds() -> list[dict]:
@@ -486,7 +463,6 @@ def get_all_rss_feeds() -> list[dict]:
         with conn.cursor() as cur:
             cur.execute("SELECT id, url, name, created_at FROM rss_feeds ORDER BY id;")
             rows = cur.fetchall()
-    conn.close()
     return [{"id": r[0], "url": r[1], "name": r[2], "created_at": r[3]} for r in rows]
 
 
@@ -496,7 +472,6 @@ def get_all_arxiv_searches() -> list[dict]:
         with conn.cursor() as cur:
             cur.execute("SELECT id, query, max_results, created_at FROM arxiv_searches ORDER BY id;")
             rows = cur.fetchall()
-    conn.close()
     return [{"id": r[0], "query": r[1], "max_results": r[2], "created_at": r[3]} for r in rows]
 
 
@@ -513,7 +488,6 @@ def get_user_rss_feeds(user_id: int) -> list[dict]:
                 {"uid": user_id},
             )
             rows = cur.fetchall()
-    conn.close()
     return [{"feed_id": r[0], "url": r[1], "name": r[2]} for r in rows]
 
 
@@ -525,7 +499,6 @@ def subscribe_user_to_feed(user_id: int, feed_id: int):
                 "INSERT INTO user_rss_feeds (user_id, feed_id) VALUES (%(uid)s, %(fid)s) ON CONFLICT DO NOTHING;",
                 {"uid": user_id, "fid": feed_id},
             )
-    conn.close()
 
 
 def unsubscribe_user_from_feed(user_id: int, feed_id: int):
@@ -536,7 +509,6 @@ def unsubscribe_user_from_feed(user_id: int, feed_id: int):
                 "DELETE FROM user_rss_feeds WHERE user_id = %(uid)s AND feed_id = %(fid)s;",
                 {"uid": user_id, "fid": feed_id},
             )
-    conn.close()
 
 
 def get_user_arxiv_searches(user_id: int) -> list[dict]:
@@ -550,7 +522,6 @@ def get_user_arxiv_searches(user_id: int) -> list[dict]:
                 {"uid": user_id},
             )
             rows = cur.fetchall()
-    conn.close()
     return [{"search_id": r[0], "query": r[1], "max_results": r[2]} for r in rows]
 
 
@@ -562,7 +533,6 @@ def subscribe_user_to_search(user_id: int, search_id: int):
                 "INSERT INTO user_arxiv_searches (user_id, search_id) VALUES (%(uid)s, %(sid)s) ON CONFLICT DO NOTHING;",
                 {"uid": user_id, "sid": search_id},
             )
-    conn.close()
 
 
 def unsubscribe_user_from_search(user_id: int, search_id: int):
@@ -573,7 +543,6 @@ def unsubscribe_user_from_search(user_id: int, search_id: int):
                 "DELETE FROM user_arxiv_searches WHERE user_id = %(uid)s AND search_id = %(sid)s;",
                 {"uid": user_id, "sid": search_id},
             )
-    conn.close()
 
 
 def get_all_rss_feeds_with_subscribers() -> list[dict]:
@@ -587,7 +556,6 @@ def get_all_rss_feeds_with_subscribers() -> list[dict]:
                 "GROUP BY f.id, f.url;"
             )
             rows = cur.fetchall()
-    conn.close()
     return [{"feed_id": r[0], "url": r[1], "subscriber_ids": r[2]} for r in rows]
 
 
@@ -602,7 +570,6 @@ def get_all_arxiv_searches_with_subscribers() -> list[dict]:
                 "GROUP BY s.id, s.query, s.max_results;"
             )
             rows = cur.fetchall()
-    conn.close()
     return [{"search_id": r[0], "query": r[1], "max_results": r[2], "subscriber_ids": r[3]} for r in rows]
 
 
@@ -616,7 +583,6 @@ def link_document_to_user(user_id: int, doc_id: str):
                 "INSERT INTO user_documents (user_id, document_id) VALUES (%(uid)s, %(did)s) ON CONFLICT DO NOTHING;",
                 {"uid": user_id, "did": doc_id},
             )
-    conn.close()
 
 
 def fetch_documents_for_user(user_id: int, since, source=None, search=None, limit=500) -> list[tuple]:
@@ -644,7 +610,6 @@ def fetch_documents_for_user(user_id: int, since, source=None, search=None, limi
         with conn.cursor() as cur:
             cur.execute(query, params)
             return cur.fetchall()
-    conn.close()
 
 
 # ─── Favorites & tags ─────────────────────────────────────────────────────────
@@ -657,7 +622,6 @@ def add_favorite(user_id: int, doc_id: str):
                 "INSERT INTO user_favorites (user_id, document_id) VALUES (%(uid)s, %(did)s) ON CONFLICT DO NOTHING;",
                 {"uid": user_id, "did": doc_id},
             )
-    conn.close()
 
 
 def remove_favorite(user_id: int, doc_id: str):
@@ -668,7 +632,6 @@ def remove_favorite(user_id: int, doc_id: str):
                 "DELETE FROM user_favorites WHERE user_id = %(uid)s AND document_id = %(did)s;",
                 {"uid": user_id, "did": doc_id},
             )
-    conn.close()
 
 
 def update_favorite_note(user_id: int, doc_id: str, note: str):
@@ -679,7 +642,6 @@ def update_favorite_note(user_id: int, doc_id: str, note: str):
                 "UPDATE user_favorites SET note = %(note)s WHERE user_id = %(uid)s AND document_id = %(did)s;",
                 {"uid": user_id, "did": doc_id, "note": note},
             )
-    conn.close()
 
 
 def get_user_favorites(user_id: int) -> list[dict]:
@@ -693,7 +655,6 @@ def get_user_favorites(user_id: int) -> list[dict]:
                 {"uid": user_id},
             )
             rows = cur.fetchall()
-    conn.close()
     return [
         {"id": r[0], "source": r[1], "title": r[2], "published_at": r[3],
          "url": r[4], "note": r[5], "favorited_at": r[6]}
@@ -710,7 +671,6 @@ def is_favorite(user_id: int, doc_id: str) -> bool:
                 {"uid": user_id, "did": doc_id},
             )
             return cur.fetchone() is not None
-    conn.close()
 
 
 def get_tags() -> list[dict]:
@@ -719,7 +679,6 @@ def get_tags() -> list[dict]:
         with conn.cursor() as cur:
             cur.execute("SELECT id, name FROM tags ORDER BY name;")
             rows = cur.fetchall()
-    conn.close()
     return [{"id": r[0], "name": r[1]} for r in rows]
 
 
@@ -732,7 +691,6 @@ def create_tag(name: str) -> int:
                 {"name": name},
             )
             return cur.fetchone()[0]
-    conn.close()
 
 
 def tag_document(user_id: int, doc_id: str, tag_id: int):
@@ -743,7 +701,6 @@ def tag_document(user_id: int, doc_id: str, tag_id: int):
                 "INSERT INTO user_document_tags (user_id, document_id, tag_id) VALUES (%(uid)s, %(did)s, %(tid)s) ON CONFLICT DO NOTHING;",
                 {"uid": user_id, "did": doc_id, "tid": tag_id},
             )
-    conn.close()
 
 
 def untag_document(user_id: int, doc_id: str, tag_id: int):
@@ -754,7 +711,6 @@ def untag_document(user_id: int, doc_id: str, tag_id: int):
                 "DELETE FROM user_document_tags WHERE user_id = %(uid)s AND document_id = %(did)s AND tag_id = %(tid)s;",
                 {"uid": user_id, "did": doc_id, "tid": tag_id},
             )
-    conn.close()
 
 
 def get_document_tags(user_id: int, doc_id: str) -> list[str]:
@@ -767,5 +723,4 @@ def get_document_tags(user_id: int, doc_id: str) -> list[str]:
                 {"uid": user_id, "did": doc_id},
             )
             rows = cur.fetchall()
-    conn.close()
     return [r[0] for r in rows]
