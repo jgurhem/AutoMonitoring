@@ -280,7 +280,7 @@ elif page == "Processing":
             digest_threshold = st.slider("Novelty threshold", 0.0, 1.0, 0.5, 0.05, key="digest_threshold")
         if st.button("Run digest"):
             with st.spinner("Generating digest..."):
-                from processors.digest import main as digest_main
+                from processors.summarize import digest as digest_main
                 st.session_state["proc_output"] = capture_run(
                     lambda: digest_main(
                         published_since=int(digest_days),
