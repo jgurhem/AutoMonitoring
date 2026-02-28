@@ -1,18 +1,45 @@
-import psycopg2
-import os
 import json
+import os
+from contextlib import contextmanager
+
+from psycopg2.pool import ThreadedConnectionPool
 from pgvector.psycopg2 import register_vector
 
-def get_connection():
-    conn = psycopg2.connect(
-        host=os.getenv("PG_HOST"),
-        port=os.getenv("PG_PORT"),
-        dbname=os.getenv("PG_DB"),
-        user=os.getenv("PG_USER"),
-        password=os.getenv("PG_PASSWORD"),
-    )
+# ─── Connection pool ──────────────────────────────────────────────────────────
+
+_pool: ThreadedConnectionPool | None = None
+
+
+def _get_pool() -> ThreadedConnectionPool:
+    global _pool
+    if _pool is None:
+        _pool = ThreadedConnectionPool(
+            minconn=1,
+            maxconn=30,
+            host=os.getenv("PG_HOST"),
+            port=os.getenv("PG_PORT"),
+            dbname=os.getenv("PG_DB"),
+            user=os.getenv("PG_USER"),
+            password=os.getenv("PG_PASSWORD"),
+        )
+    return _pool
+
+
+@contextmanager
+def get_db():
+    """Yield a cursor inside a transaction, backed by a pooled connection."""
+    pool = _get_pool()
+    conn = pool.getconn()
     register_vector(conn)
-    return conn
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                yield cur
+    finally:
+        pool.putconn(conn)
+
+
+# ─── Documents ────────────────────────────────────────────────────────────────
 
 def is_recently_collected(url: str) -> bool:
     query = """
@@ -21,11 +48,10 @@ def is_recently_collected(url: str) -> bool:
     AND collected_at >= NOW() - INTERVAL '1 month'
     LIMIT 1;
     """
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, {"url": url})
-            return cur.fetchone() is not None
+    with get_db() as cur:
+        cur.execute(query, {"url": url})
+        return cur.fetchone() is not None
+
 
 def insert_document(doc: dict):
     query = """
@@ -53,26 +79,24 @@ def insert_document(doc: dict):
         collected_at = EXCLUDED.collected_at,
         raw = EXCLUDED.raw;
     """
+    with get_db() as cur:
+        cur.execute(query, {
+            "id": doc.get("id"),
+            "source": doc.get("source"),
+            "title": doc.get("title"),
+            "authors": doc.get("authors"),
+            "url": doc.get("url"),
+            "description": doc.get("description"),
+            "content": doc.get("content"),
+            "categories": doc.get("categories"),
+            "language": doc.get("language"),
+            "stars": doc.get("stars"),
+            "published_at": doc.get("published"),
+            "updated_at": doc.get("updated_at"),
+            "collected_at": doc.get("collected_at"),
+            "raw": json.dumps(doc),
+        })
 
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, {
-                "id": doc.get("id"),
-                "source": doc.get("source"),
-                "title": doc.get("title"),
-                "authors": doc.get("authors"),
-                "url": doc.get("url"),
-                "description": doc.get("description"),
-                "content": doc.get("content"),
-                "categories": doc.get("categories"),
-                "language": doc.get("language"),
-                "stars": doc.get("stars"),
-                "published_at": doc.get("published"),
-                "updated_at": doc.get("updated_at"),
-                "collected_at": doc.get("collected_at"),
-                "raw": json.dumps(doc)
-            })
 
 def fetch_documents_without_summary(batch_size: int = 10) -> list[dict]:
     query = """
@@ -83,22 +107,22 @@ def fetch_documents_without_summary(batch_size: int = 10) -> list[dict]:
     ORDER BY collected_at DESC
     LIMIT %(batch_size)s;
     """
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, {"batch_size": batch_size})
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute(query, {"batch_size": batch_size})
+        rows = cur.fetchall()
     return [
         {"id": r[0], "title": r[1], "description": r[2], "content": r[3]}
         for r in rows
     ]
 
+
 def save_summary(doc_id: str, summary: str):
-    query = "UPDATE documents SET summary = %(summary)s WHERE id = %(id)s;"
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, {"id": doc_id, "summary": summary})
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE documents SET summary = %(summary)s WHERE id = %(id)s;",
+            {"id": doc_id, "summary": summary},
+        )
+
 
 def fetch_summaries_since(published_since: int, novelty_threshold: float | None = None, user_id: int | None = None) -> list[dict]:
     conds = [
@@ -127,11 +151,9 @@ def fetch_summaries_since(published_since: int, novelty_threshold: float | None 
     params = {"published_since": published_since}
     if user_id is not None:
         params["user_id"] = user_id
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, params)
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute(query, params)
+        rows = cur.fetchall()
     docs = [{"id": r[0], "title": r[1], "summary": r[2], "novelty_score": r[3]} for r in rows]
     if novelty_threshold is not None:
         docs = [d for d in docs if d["novelty_score"] is not None and d["novelty_score"] > novelty_threshold]
@@ -146,25 +168,23 @@ def fetch_documents_without_embeddings(batch_size: int = 100) -> list[dict]:
     ORDER BY collected_at DESC
     LIMIT %(batch_size)s;
     """
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, {"batch_size": batch_size})
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute(query, {"batch_size": batch_size})
+        rows = cur.fetchall()
     return [
         {"id": r[0], "title": r[1], "description": r[2], "content": r[3]}
         for r in rows
     ]
 
+
 def save_embedding(doc_id: str, embedding: list[float]):
     import numpy as np
-    query = """
-    UPDATE documents SET embedding = %(embedding)s WHERE id = %(id)s;
-    """
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, {"id": doc_id, "embedding": np.array(embedding)})
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE documents SET embedding = %(embedding)s WHERE id = %(id)s;",
+            {"id": doc_id, "embedding": np.array(embedding)},
+        )
+
 
 def fetch_near_duplicates(threshold: float = 0.95) -> list[dict]:
     query = """
@@ -183,11 +203,9 @@ def fetch_near_duplicates(threshold: float = 0.95) -> list[dict]:
     WHERE 1 - (d1.embedding <=> d2.embedding) > %(threshold)s
     ORDER BY LEAST(d1.id, d2.id), GREATEST(d1.id, d2.id), similarity DESC;
     """
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, {"threshold": threshold})
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute(query, {"threshold": threshold})
+        rows = cur.fetchall()
     return [
         {
             "id1": r[0], "title1": r[1], "source1": r[2], "published_at1": r[3],
@@ -199,10 +217,9 @@ def fetch_near_duplicates(threshold: float = 0.95) -> list[dict]:
 
 
 def delete_document(doc_id: str):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM documents WHERE id = %(id)s;", {"id": doc_id})
+    with get_db() as cur:
+        cur.execute("DELETE FROM documents WHERE id = %(id)s;", {"id": doc_id})
+
 
 def fetch_novelty_scores(
     published_since: int | None = None,
@@ -240,11 +257,9 @@ def fetch_novelty_scores(
     {join}
     WHERE {where};
     """
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, params)
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute(query, params)
+        rows = cur.fetchall()
     return [
         {"id": r[0], "title": r[1], "nearest_similarity": r[2]}
         for r in rows
@@ -256,23 +271,19 @@ def fetch_document(doc_id: str) -> tuple | None:
     SELECT title, authors, url, description, content, categories, published_at
     FROM documents WHERE id = %(id)s;
     """
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, {"id": doc_id})
-            return cur.fetchone()
+    with get_db() as cur:
+        cur.execute(query, {"id": doc_id})
+        return cur.fetchone()
 
 
 def fetch_counts() -> dict:
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM documents;")
-            total = cur.fetchone()[0]
-            cur.execute("SELECT COUNT(*) FROM documents WHERE embedding IS NOT NULL;")
-            with_emb = cur.fetchone()[0]
-            cur.execute("SELECT source, COUNT(*) FROM documents GROUP BY source ORDER BY count DESC;")
-            by_source = cur.fetchall()
+    with get_db() as cur:
+        cur.execute("SELECT COUNT(*) FROM documents;")
+        total = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM documents WHERE embedding IS NOT NULL;")
+        with_emb = cur.fetchone()[0]
+        cur.execute("SELECT source, COUNT(*) FROM documents GROUP BY source ORDER BY count DESC;")
+        by_source = cur.fetchall()
     return {"total": total, "with_embedding": with_emb, "by_source": by_source}
 
 
@@ -284,11 +295,9 @@ def fetch_daily_counts(days: int = 30) -> list[tuple]:
     GROUP BY day, source
     ORDER BY day;
     """
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, {"days": days})
-            return cur.fetchall()
+    with get_db() as cur:
+        cur.execute(query, {"days": days})
+        return cur.fetchall()
 
 
 def fetch_arxiv_categories(limit: int = 20) -> list[tuple]:
@@ -300,11 +309,9 @@ def fetch_arxiv_categories(limit: int = 20) -> list[tuple]:
     ORDER BY n DESC
     LIMIT %(limit)s;
     """
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, {"limit": limit})
-            return cur.fetchall()
+    with get_db() as cur:
+        cur.execute(query, {"limit": limit})
+        return cur.fetchall()
 
 
 def search_similar(vec, top_k: int = 10) -> list[tuple]:
@@ -317,11 +324,9 @@ def search_similar(vec, top_k: int = 10) -> list[tuple]:
     ORDER BY embedding <=> %(vec)s
     LIMIT %(k)s;
     """
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, {"vec": np.array(vec), "k": top_k})
-            return cur.fetchall()
+    with get_db() as cur:
+        cur.execute(query, {"vec": np.array(vec), "k": top_k})
+        return cur.fetchall()
 
 
 def fetch_all_embeddings(user_id: int | None = None) -> list[dict]:
@@ -341,30 +346,26 @@ def fetch_all_embeddings(user_id: int | None = None) -> list[dict]:
         WHERE embedding IS NOT NULL;
         """
         params = {}
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, params)
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute(query, params)
+        rows = cur.fetchall()
     return [
         {"id": r[0], "title": r[1], "embedding": np.array(r[2]), "published_at": r[3]}
         for r in rows
     ]
 
 
-# ─── Users ───────────────────────────────────────────────────────────────────
+# ─── Users ────────────────────────────────────────────────────────────────────
 
 def get_user_by_username(username: str) -> dict | None:
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, username, password_hash, is_admin, is_active, "
-                "pref_novelty_threshold, pref_digest_days, pref_digest_novelty_threshold "
-                "FROM users WHERE username = %(username)s;",
-                {"username": username},
-            )
-            row = cur.fetchone()
+    with get_db() as cur:
+        cur.execute(
+            "SELECT id, username, password_hash, is_admin, is_active, "
+            "pref_novelty_threshold, pref_digest_days, pref_digest_novelty_threshold "
+            "FROM users WHERE username = %(username)s;",
+            {"username": username},
+        )
+        row = cur.fetchone()
     if row is None:
         return None
     return {
@@ -376,25 +377,20 @@ def get_user_by_username(username: str) -> dict | None:
 
 
 def create_user(username: str, password_hash: str, is_admin: bool = False) -> int:
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO users (username, password_hash, is_admin) VALUES (%(u)s, %(h)s, %(a)s) RETURNING id;",
-                {"u": username, "h": password_hash, "a": is_admin},
-            )
-            user_id = cur.fetchone()[0]
-    return user_id
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO users (username, password_hash, is_admin) VALUES (%(u)s, %(h)s, %(a)s) RETURNING id;",
+            {"u": username, "h": password_hash, "a": is_admin},
+        )
+        return cur.fetchone()[0]
 
 
 def get_all_users() -> list[dict]:
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, username, is_admin, is_active, created_at FROM users ORDER BY id;"
-            )
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute(
+            "SELECT id, username, is_admin, is_active, created_at FROM users ORDER BY id;"
+        )
+        rows = cur.fetchall()
     return [
         {"id": r[0], "username": r[1], "is_admin": r[2], "is_active": r[3], "created_at": r[4]}
         for r in rows
@@ -402,23 +398,19 @@ def get_all_users() -> list[dict]:
 
 
 def set_user_active(user_id: int, active: bool):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE users SET is_active = %(a)s WHERE id = %(id)s;",
-                {"id": user_id, "a": active},
-            )
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE users SET is_active = %(a)s WHERE id = %(id)s;",
+            {"id": user_id, "a": active},
+        )
 
 
 def update_user_password(user_id: int, password_hash: str):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE users SET password_hash = %(h)s WHERE id = %(id)s;",
-                {"id": user_id, "h": password_hash},
-            )
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE users SET password_hash = %(h)s WHERE id = %(id)s;",
+            {"id": user_id, "h": password_hash},
+        )
 
 
 def update_user_prefs(user_id: int, **prefs):
@@ -431,192 +423,160 @@ def update_user_prefs(user_id: int, **prefs):
         return
     set_clause = ", ".join(f"{k} = %({k})s" for k in updates)
     updates["user_id"] = user_id
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(f"UPDATE users SET {set_clause} WHERE id = %(user_id)s;", updates)
+    with get_db() as cur:
+        cur.execute(f"UPDATE users SET {set_clause} WHERE id = %(user_id)s;", updates)
 
 
 # ─── Feed / search catalog ────────────────────────────────────────────────────
 
 def get_or_create_rss_feed(url: str, name: str | None = None) -> int:
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id FROM rss_feeds WHERE url = %(url)s;", {"url": url})
-            row = cur.fetchone()
-            if row:
-                return row[0]
-            cur.execute(
-                "INSERT INTO rss_feeds (url, name) VALUES (%(url)s, %(name)s) RETURNING id;",
-                {"url": url, "name": name},
-            )
-            return cur.fetchone()[0]
+    with get_db() as cur:
+        cur.execute("SELECT id FROM rss_feeds WHERE url = %(url)s;", {"url": url})
+        row = cur.fetchone()
+        if row:
+            return row[0]
+        cur.execute(
+            "INSERT INTO rss_feeds (url, name) VALUES (%(url)s, %(name)s) RETURNING id;",
+            {"url": url, "name": name},
+        )
+        return cur.fetchone()[0]
 
 
 def get_or_create_arxiv_search(query: str, max_results: int = 10) -> int:
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id FROM arxiv_searches WHERE query = %(q)s;", {"q": query})
-            row = cur.fetchone()
-            if row:
-                return row[0]
-            cur.execute(
-                "INSERT INTO arxiv_searches (query, max_results) VALUES (%(q)s, %(m)s) RETURNING id;",
-                {"q": query, "m": max_results},
-            )
-            return cur.fetchone()[0]
+    with get_db() as cur:
+        cur.execute("SELECT id FROM arxiv_searches WHERE query = %(q)s;", {"q": query})
+        row = cur.fetchone()
+        if row:
+            return row[0]
+        cur.execute(
+            "INSERT INTO arxiv_searches (query, max_results) VALUES (%(q)s, %(m)s) RETURNING id;",
+            {"q": query, "m": max_results},
+        )
+        return cur.fetchone()[0]
 
 
 def get_all_rss_feeds() -> list[dict]:
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id, url, name, created_at FROM rss_feeds ORDER BY id;")
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute("SELECT id, url, name, created_at FROM rss_feeds ORDER BY id;")
+        rows = cur.fetchall()
     return [{"id": r[0], "url": r[1], "name": r[2], "created_at": r[3]} for r in rows]
 
 
 def get_all_arxiv_searches() -> list[dict]:
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id, query, max_results, created_at FROM arxiv_searches ORDER BY id;")
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute("SELECT id, query, max_results, created_at FROM arxiv_searches ORDER BY id;")
+        rows = cur.fetchall()
     return [{"id": r[0], "query": r[1], "max_results": r[2], "created_at": r[3]} for r in rows]
 
 
 # ─── User subscriptions ───────────────────────────────────────────────────────
 
 def get_user_rss_feeds(user_id: int) -> list[dict]:
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT f.id, f.url, f.name, f.last_collected_at FROM rss_feeds f "
-                "JOIN user_rss_feeds uf ON f.id = uf.feed_id "
-                "WHERE uf.user_id = %(uid)s ORDER BY f.id;",
-                {"uid": user_id},
-            )
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute(
+            "SELECT f.id, f.url, f.name, f.last_collected_at FROM rss_feeds f "
+            "JOIN user_rss_feeds uf ON f.id = uf.feed_id "
+            "WHERE uf.user_id = %(uid)s ORDER BY f.id;",
+            {"uid": user_id},
+        )
+        rows = cur.fetchall()
     return [{"feed_id": r[0], "url": r[1], "name": r[2], "last_collected_at": r[3]} for r in rows]
 
 
 def subscribe_user_to_feed(user_id: int, feed_id: int):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO user_rss_feeds (user_id, feed_id) VALUES (%(uid)s, %(fid)s) ON CONFLICT DO NOTHING;",
-                {"uid": user_id, "fid": feed_id},
-            )
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO user_rss_feeds (user_id, feed_id) VALUES (%(uid)s, %(fid)s) ON CONFLICT DO NOTHING;",
+            {"uid": user_id, "fid": feed_id},
+        )
 
 
 def unsubscribe_user_from_feed(user_id: int, feed_id: int):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM user_rss_feeds WHERE user_id = %(uid)s AND feed_id = %(fid)s;",
-                {"uid": user_id, "fid": feed_id},
-            )
+    with get_db() as cur:
+        cur.execute(
+            "DELETE FROM user_rss_feeds WHERE user_id = %(uid)s AND feed_id = %(fid)s;",
+            {"uid": user_id, "fid": feed_id},
+        )
 
 
 def get_user_arxiv_searches(user_id: int) -> list[dict]:
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT s.id, s.query, s.max_results, s.last_collected_at FROM arxiv_searches s "
-                "JOIN user_arxiv_searches us ON s.id = us.search_id "
-                "WHERE us.user_id = %(uid)s ORDER BY s.id;",
-                {"uid": user_id},
-            )
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute(
+            "SELECT s.id, s.query, s.max_results, s.last_collected_at FROM arxiv_searches s "
+            "JOIN user_arxiv_searches us ON s.id = us.search_id "
+            "WHERE us.user_id = %(uid)s ORDER BY s.id;",
+            {"uid": user_id},
+        )
+        rows = cur.fetchall()
     return [{"search_id": r[0], "query": r[1], "max_results": r[2], "last_collected_at": r[3]} for r in rows]
 
 
 def subscribe_user_to_search(user_id: int, search_id: int):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO user_arxiv_searches (user_id, search_id) VALUES (%(uid)s, %(sid)s) ON CONFLICT DO NOTHING;",
-                {"uid": user_id, "sid": search_id},
-            )
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO user_arxiv_searches (user_id, search_id) VALUES (%(uid)s, %(sid)s) ON CONFLICT DO NOTHING;",
+            {"uid": user_id, "sid": search_id},
+        )
 
 
 def unsubscribe_user_from_search(user_id: int, search_id: int):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM user_arxiv_searches WHERE user_id = %(uid)s AND search_id = %(sid)s;",
-                {"uid": user_id, "sid": search_id},
-            )
+    with get_db() as cur:
+        cur.execute(
+            "DELETE FROM user_arxiv_searches WHERE user_id = %(uid)s AND search_id = %(sid)s;",
+            {"uid": user_id, "sid": search_id},
+        )
 
 
 def get_all_rss_feeds_with_subscribers() -> list[dict]:
     """Returns feeds that have at least one subscriber, with their subscriber_ids list."""
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT f.id, f.url, array_agg(uf.user_id) AS subscriber_ids "
-                "FROM rss_feeds f JOIN user_rss_feeds uf ON f.id = uf.feed_id "
-                "GROUP BY f.id, f.url;"
-            )
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute(
+            "SELECT f.id, f.url, array_agg(uf.user_id) AS subscriber_ids "
+            "FROM rss_feeds f JOIN user_rss_feeds uf ON f.id = uf.feed_id "
+            "GROUP BY f.id, f.url;"
+        )
+        rows = cur.fetchall()
     return [{"feed_id": r[0], "url": r[1], "subscriber_ids": r[2]} for r in rows]
 
 
 def get_all_arxiv_searches_with_subscribers() -> list[dict]:
     """Returns searches that have at least one subscriber, with their subscriber_ids list."""
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT s.id, s.query, s.max_results, array_agg(us.user_id) AS subscriber_ids "
-                "FROM arxiv_searches s JOIN user_arxiv_searches us ON s.id = us.search_id "
-                "GROUP BY s.id, s.query, s.max_results;"
-            )
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute(
+            "SELECT s.id, s.query, s.max_results, array_agg(us.user_id) AS subscriber_ids "
+            "FROM arxiv_searches s JOIN user_arxiv_searches us ON s.id = us.search_id "
+            "GROUP BY s.id, s.query, s.max_results;"
+        )
+        rows = cur.fetchall()
     return [{"search_id": r[0], "query": r[1], "max_results": r[2], "subscriber_ids": r[3]} for r in rows]
 
 
 # ─── User-document links ──────────────────────────────────────────────────────
 
 def link_document_to_user(user_id: int, doc_id: str):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO user_documents (user_id, document_id) VALUES (%(uid)s, %(did)s) ON CONFLICT DO NOTHING;",
-                {"uid": user_id, "did": doc_id},
-            )
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO user_documents (user_id, document_id) VALUES (%(uid)s, %(did)s) ON CONFLICT DO NOTHING;",
+            {"uid": user_id, "did": doc_id},
+        )
 
 
 def mark_document_read(user_id: int, doc_id: str):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE user_documents SET read_at = NOW() "
-                "WHERE user_id = %(uid)s AND document_id = %(did)s AND read_at IS NULL;",
-                {"uid": user_id, "did": doc_id},
-            )
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE user_documents SET read_at = NOW() "
+            "WHERE user_id = %(uid)s AND document_id = %(did)s AND read_at IS NULL;",
+            {"uid": user_id, "did": doc_id},
+        )
 
 
 def mark_document_unread(user_id: int, doc_id: str):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE user_documents SET read_at = NULL "
-                "WHERE user_id = %(uid)s AND document_id = %(did)s;",
-                {"uid": user_id, "did": doc_id},
-            )
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE user_documents SET read_at = NULL "
+            "WHERE user_id = %(uid)s AND document_id = %(did)s;",
+            {"uid": user_id, "did": doc_id},
+        )
 
 
 def mark_all_read_for_user(user_id: int, since, source=None, search=None):
@@ -635,46 +595,38 @@ def mark_all_read_for_user(user_id: int, since, source=None, search=None):
     FROM documents d
     WHERE ud.document_id = d.id AND {where};
     """
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, params)
+    with get_db() as cur:
+        cur.execute(query, params)
 
 
 def update_rss_feed_collected_at(feed_id: int):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE rss_feeds SET last_collected_at = NOW() WHERE id = %(id)s;",
-                {"id": feed_id},
-            )
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE rss_feeds SET last_collected_at = NOW() WHERE id = %(id)s;",
+            {"id": feed_id},
+        )
 
 
 def update_arxiv_search_collected_at(search_id: int):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE arxiv_searches SET last_collected_at = NOW() WHERE id = %(id)s;",
-                {"id": search_id},
-            )
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE arxiv_searches SET last_collected_at = NOW() WHERE id = %(id)s;",
+            {"id": search_id},
+        )
 
 
 def get_all_document_tags_for_user(user_id: int) -> dict:
     """Returns {doc_id: [tag_name, ...]} for all tagged documents of a user."""
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT udt.document_id, t.name "
-                "FROM user_document_tags udt "
-                "JOIN tags t ON t.id = udt.tag_id "
-                "WHERE udt.user_id = %(uid)s "
-                "ORDER BY udt.document_id, t.name;",
-                {"uid": user_id},
-            )
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute(
+            "SELECT udt.document_id, t.name "
+            "FROM user_document_tags udt "
+            "JOIN tags t ON t.id = udt.tag_id "
+            "WHERE udt.user_id = %(uid)s "
+            "ORDER BY udt.document_id, t.name;",
+            {"uid": user_id},
+        )
+        rows = cur.fetchall()
     result: dict = {}
     for doc_id, tag_name in rows:
         result.setdefault(doc_id, []).append(tag_name)
@@ -702,11 +654,9 @@ def fetch_documents_for_user(user_id: int, since, source=None, search=None, limi
     LIMIT %(limit)s
     OFFSET %(offset)s;
     """
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, params)
-            return cur.fetchall()
+    with get_db() as cur:
+        cur.execute(query, params)
+        return cur.fetchall()
 
 
 def count_documents_for_user(user_id: int, since, source=None, search=None) -> int:
@@ -727,56 +677,46 @@ def count_documents_for_user(user_id: int, since, source=None, search=None) -> i
     JOIN user_documents ud ON d.id = ud.document_id
     WHERE {where};
     """
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, params)
-            return cur.fetchone()[0]
+    with get_db() as cur:
+        cur.execute(query, params)
+        return cur.fetchone()[0]
 
 
 # ─── Favorites & tags ─────────────────────────────────────────────────────────
 
 def add_favorite(user_id: int, doc_id: str):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO user_favorites (user_id, document_id) VALUES (%(uid)s, %(did)s) ON CONFLICT DO NOTHING;",
-                {"uid": user_id, "did": doc_id},
-            )
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO user_favorites (user_id, document_id) VALUES (%(uid)s, %(did)s) ON CONFLICT DO NOTHING;",
+            {"uid": user_id, "did": doc_id},
+        )
 
 
 def remove_favorite(user_id: int, doc_id: str):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM user_favorites WHERE user_id = %(uid)s AND document_id = %(did)s;",
-                {"uid": user_id, "did": doc_id},
-            )
+    with get_db() as cur:
+        cur.execute(
+            "DELETE FROM user_favorites WHERE user_id = %(uid)s AND document_id = %(did)s;",
+            {"uid": user_id, "did": doc_id},
+        )
 
 
 def update_favorite_note(user_id: int, doc_id: str, note: str):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE user_favorites SET note = %(note)s WHERE user_id = %(uid)s AND document_id = %(did)s;",
-                {"uid": user_id, "did": doc_id, "note": note},
-            )
+    with get_db() as cur:
+        cur.execute(
+            "UPDATE user_favorites SET note = %(note)s WHERE user_id = %(uid)s AND document_id = %(did)s;",
+            {"uid": user_id, "did": doc_id, "note": note},
+        )
 
 
 def get_user_favorites(user_id: int) -> list[dict]:
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT d.id, d.source, d.title, d.published_at, d.url, uf.note, uf.created_at "
-                "FROM documents d JOIN user_favorites uf ON d.id = uf.document_id "
-                "WHERE uf.user_id = %(uid)s ORDER BY uf.created_at DESC;",
-                {"uid": user_id},
-            )
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute(
+            "SELECT d.id, d.source, d.title, d.published_at, d.url, uf.note, uf.created_at "
+            "FROM documents d JOIN user_favorites uf ON d.id = uf.document_id "
+            "WHERE uf.user_id = %(uid)s ORDER BY uf.created_at DESC;",
+            {"uid": user_id},
+        )
+        rows = cur.fetchall()
     return [
         {"id": r[0], "source": r[1], "title": r[2], "published_at": r[3],
          "url": r[4], "note": r[5], "favorited_at": r[6]}
@@ -785,64 +725,52 @@ def get_user_favorites(user_id: int) -> list[dict]:
 
 
 def is_favorite(user_id: int, doc_id: str) -> bool:
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT 1 FROM user_favorites WHERE user_id = %(uid)s AND document_id = %(did)s;",
-                {"uid": user_id, "did": doc_id},
-            )
-            return cur.fetchone() is not None
+    with get_db() as cur:
+        cur.execute(
+            "SELECT 1 FROM user_favorites WHERE user_id = %(uid)s AND document_id = %(did)s;",
+            {"uid": user_id, "did": doc_id},
+        )
+        return cur.fetchone() is not None
 
 
 def get_tags() -> list[dict]:
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id, name FROM tags ORDER BY name;")
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute("SELECT id, name FROM tags ORDER BY name;")
+        rows = cur.fetchall()
     return [{"id": r[0], "name": r[1]} for r in rows]
 
 
 def create_tag(name: str) -> int:
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO tags (name) VALUES (%(name)s) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id;",
-                {"name": name},
-            )
-            return cur.fetchone()[0]
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO tags (name) VALUES (%(name)s) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id;",
+            {"name": name},
+        )
+        return cur.fetchone()[0]
 
 
 def tag_document(user_id: int, doc_id: str, tag_id: int):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "INSERT INTO user_document_tags (user_id, document_id, tag_id) VALUES (%(uid)s, %(did)s, %(tid)s) ON CONFLICT DO NOTHING;",
-                {"uid": user_id, "did": doc_id, "tid": tag_id},
-            )
+    with get_db() as cur:
+        cur.execute(
+            "INSERT INTO user_document_tags (user_id, document_id, tag_id) VALUES (%(uid)s, %(did)s, %(tid)s) ON CONFLICT DO NOTHING;",
+            {"uid": user_id, "did": doc_id, "tid": tag_id},
+        )
 
 
 def untag_document(user_id: int, doc_id: str, tag_id: int):
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "DELETE FROM user_document_tags WHERE user_id = %(uid)s AND document_id = %(did)s AND tag_id = %(tid)s;",
-                {"uid": user_id, "did": doc_id, "tid": tag_id},
-            )
+    with get_db() as cur:
+        cur.execute(
+            "DELETE FROM user_document_tags WHERE user_id = %(uid)s AND document_id = %(did)s AND tag_id = %(tid)s;",
+            {"uid": user_id, "did": doc_id, "tid": tag_id},
+        )
 
 
 def get_document_tags(user_id: int, doc_id: str) -> list[str]:
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT t.name FROM tags t JOIN user_document_tags udt ON t.id = udt.tag_id "
-                "WHERE udt.user_id = %(uid)s AND udt.document_id = %(did)s ORDER BY t.name;",
-                {"uid": user_id, "did": doc_id},
-            )
-            rows = cur.fetchall()
+    with get_db() as cur:
+        cur.execute(
+            "SELECT t.name FROM tags t JOIN user_document_tags udt ON t.id = udt.tag_id "
+            "WHERE udt.user_id = %(uid)s AND udt.document_id = %(did)s ORDER BY t.name;",
+            {"uid": user_id, "did": doc_id},
+        )
+        rows = cur.fetchall()
     return [r[0] for r in rows]
