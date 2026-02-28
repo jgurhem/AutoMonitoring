@@ -31,9 +31,9 @@ _arg_parser.add_argument("--model", default="mixtral")
 _args, _ = _arg_parser.parse_known_args()
 ollama_model = _args.model
 
-nav_pages = ["Browse", "Stats", "Semantic Search", "Processing", "Favorites", "Profile"]
+nav_pages = ["Browse", "Semantic Search", "Processing", "Favorites", "Profile"]
 if user.get("is_admin"):
-    nav_pages.append("Admin: Users")
+    nav_pages += ["Stats", "Admin: Users"]
 
 with st.sidebar:
     page = st.radio("Navigation", nav_pages)
