@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS user_arxiv_searches (
 CREATE TABLE IF NOT EXISTS user_documents (
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     document_id TEXT REFERENCES documents(id) ON DELETE CASCADE,
+    read_at TIMESTAMP,
     PRIMARY KEY (user_id, document_id)
 );
 

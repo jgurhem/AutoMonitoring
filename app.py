@@ -31,9 +31,11 @@ _arg_parser.add_argument("--model", default="mixtral")
 _args, _ = _arg_parser.parse_known_args()
 ollama_model = _args.model
 
+PAGE_SIZE = 50
+
 nav_pages = ["Browse", "Semantic Search", "Processing", "Favorites", "Profile"]
 if user.get("is_admin"):
-    nav_pages += ["Stats", "Admin: Users"]
+    nav_pages += ["Stats", "Admin: Users", "Admin: Dedup"]
 
 with st.sidebar:
     page = st.radio("Navigation", nav_pages)
@@ -65,20 +67,27 @@ def capture_run(fn):
 
 
 def show_document(doc_id):
+    db.mark_document_read(user["id"], doc_id)
     d = db.fetch_document(doc_id)
     if not d:
         return
     title, authors, doc_url, description, content, categories, published_at = d
     st.divider()
 
+    btn_col1, btn_col2 = st.columns([2, 1])
+
     # Favorite toggle
     fav = db.is_favorite(user["id"], doc_id)
     fav_label = "★ Remove from favorites" if fav else "☆ Add to favorites"
-    if st.button(fav_label, key=f"fav_toggle_{doc_id}"):
+    if btn_col1.button(fav_label, key=f"fav_toggle_{doc_id}"):
         if fav:
             db.remove_favorite(user["id"], doc_id)
         else:
             db.add_favorite(user["id"], doc_id)
+        st.rerun()
+
+    if btn_col2.button("Mark as unread", key=f"unread_{doc_id}"):
+        db.mark_document_unread(user["id"], doc_id)
         st.rerun()
 
     st.subheader(title)
@@ -141,22 +150,54 @@ if page == "Browse":
     days = c2.number_input("Collected last N days", min_value=1, max_value=365, value=30)
     search = c3.text_input("Search title")
 
-    rows = db.fetch_documents_for_user(
+    # Reset page when filters change
+    filter_key = (source, int(days), search)
+    if st.session_state.get("browse_filter") != filter_key:
+        st.session_state["browse_page"] = 0
+        st.session_state["browse_filter"] = filter_key
+
+    page_idx = st.session_state.get("browse_page", 0)
+    since = datetime.now(timezone.utc) - timedelta(days=int(days))
+    source_filter = source if source != "all" else None
+
+    total = db.count_documents_for_user(
         user_id=user["id"],
-        since=datetime.now(timezone.utc) - timedelta(days=int(days)),
-        source=source if source != "all" else None,
+        since=since,
+        source=source_filter,
         search=search or None,
     )
+    total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    page_idx = min(page_idx, total_pages - 1)
 
-    df = pd.DataFrame(rows, columns=["id", "source", "title", "published_at", "url"])
-    st.caption(f"{len(df)} documents")
+    rows = db.fetch_documents_for_user(
+        user_id=user["id"],
+        since=since,
+        source=source_filter,
+        search=search or None,
+        limit=PAGE_SIZE,
+        offset=page_idx * PAGE_SIZE,
+    )
+
+    df = pd.DataFrame(rows, columns=["id", "source", "title", "published_at", "url", "read_at"])
+    df["read"] = df["read_at"].apply(lambda x: "✓" if x else "")
+    unread = int(df["read_at"].isna().sum())
+    st.caption(f"{total} documents ({unread} unread on this page)")
 
     sel = st.dataframe(
-        df[["source", "title", "published_at"]],
+        df[["read", "source", "title", "published_at"]],
         on_select="rerun",
         selection_mode="single-row",
         hide_index=True,
     )
+
+    col_prev, col_info, col_next = st.columns([1, 2, 1])
+    if col_prev.button("← Prev", disabled=page_idx == 0):
+        st.session_state["browse_page"] = page_idx - 1
+        st.rerun()
+    col_info.markdown(f"Page **{page_idx + 1}** of **{total_pages}**")
+    if col_next.button("Next →", disabled=page_idx >= total_pages - 1):
+        st.session_state["browse_page"] = page_idx + 1
+        st.rerun()
 
     if sel.selection.rows:
         show_document(df.iloc[sel.selection.rows[0]]["id"])
@@ -234,20 +275,9 @@ elif page == "Processing":
     pref_novelty = float(user.get("pref_novelty_threshold") or 0.6)
     pref_digest_days = int(user.get("pref_digest_days") or 7)
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.subheader("Deduplicate")
-        st.write("Find near-duplicate documents using cosine similarity.")
-        if user.get("is_admin"):
-            if st.button("Run dedup"):
-                with st.spinner("Finding duplicates..."):
-                    from processors.dedup import main as dedup_main
-                    st.session_state["proc_output"] = capture_run(dedup_main)
-        else:
-            st.info("Admin only.")
-
-    with col2:
         st.subheader("Novelty")
         st.write("Score documents by how different they are from the rest.")
         novelty_threshold = st.slider("Threshold", 0.0, 1.0, pref_novelty, 0.05, key="novelty_threshold")
@@ -259,7 +289,7 @@ elif page == "Processing":
                 kwargs = {novelty_time_field: int(novelty_days), "user_id": user["id"], "threshold": novelty_threshold}
                 st.session_state["proc_output"] = capture_run(lambda: novelty_main(**kwargs))
 
-    with col3:
+    with col2:
         st.subheader("Cluster")
         st.write("Group documents into topic clusters using HDBSCAN.")
         new_only = st.checkbox("Show only new articles")
@@ -268,7 +298,7 @@ elif page == "Processing":
                 from processors.cluster import main as cluster_main
                 st.session_state["proc_output"] = capture_run(lambda: cluster_main(new=new_only, user_id=user["id"]))
 
-    with col4:
+    with col3:
         st.subheader("Digest")
         st.write("Generate a meta-summary of recent article summaries.")
         digest_days = st.number_input("Published last N days", min_value=1, max_value=15, value=pref_digest_days, key="digest_days")
@@ -321,3 +351,13 @@ elif page == "Admin: Users":
         st.stop()
     from ui.admin_users import show as show_admin_users
     show_admin_users()
+
+
+# ─── Admin: Dedup ─────────────────────────────────────────────────────────────
+
+elif page == "Admin: Dedup":
+    if not user.get("is_admin"):
+        st.error("Admin access required.")
+        st.stop()
+    from ui.admin_dedup import show as show_admin_dedup
+    show_admin_dedup()

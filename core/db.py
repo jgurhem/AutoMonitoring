@@ -169,11 +169,12 @@ def save_embedding(doc_id: str, embedding: list[float]):
 def fetch_near_duplicates(threshold: float = 0.95) -> list[dict]:
     query = """
     SELECT DISTINCT ON (LEAST(d1.id, d2.id), GREATEST(d1.id, d2.id))
-        d1.id AS id1, d1.title AS title1, d2.id AS id2, d2.title AS title2,
+        d1.id AS id1, d1.title AS title1, d1.source AS source1, d1.published_at AS published_at1,
+        d2.id AS id2, d2.title AS title2, d2.source AS source2, d2.published_at AS published_at2,
         1 - (d1.embedding <=> d2.embedding) AS similarity
     FROM documents d1
     CROSS JOIN LATERAL (
-        SELECT id, title, embedding
+        SELECT id, title, source, published_at, embedding
         FROM documents d2
         WHERE d2.id != d1.id
         ORDER BY d1.embedding <=> d2.embedding
@@ -188,9 +189,20 @@ def fetch_near_duplicates(threshold: float = 0.95) -> list[dict]:
             cur.execute(query, {"threshold": threshold})
             rows = cur.fetchall()
     return [
-        {"id1": r[0], "title1": r[1], "id2": r[2], "title2": r[3], "similarity": r[4]}
+        {
+            "id1": r[0], "title1": r[1], "source1": r[2], "published_at1": r[3],
+            "id2": r[4], "title2": r[5], "source2": r[6], "published_at2": r[7],
+            "similarity": r[8],
+        }
         for r in rows
     ]
+
+
+def delete_document(doc_id: str):
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM documents WHERE id = %(id)s;", {"id": doc_id})
 
 def fetch_novelty_scores(
     published_since: int | None = None,
@@ -585,9 +597,31 @@ def link_document_to_user(user_id: int, doc_id: str):
             )
 
 
-def fetch_documents_for_user(user_id: int, since, source=None, search=None, limit=500) -> list[tuple]:
+def mark_document_read(user_id: int, doc_id: str):
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE user_documents SET read_at = NOW() "
+                "WHERE user_id = %(uid)s AND document_id = %(did)s AND read_at IS NULL;",
+                {"uid": user_id, "did": doc_id},
+            )
+
+
+def mark_document_unread(user_id: int, doc_id: str):
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE user_documents SET read_at = NULL "
+                "WHERE user_id = %(uid)s AND document_id = %(did)s;",
+                {"uid": user_id, "did": doc_id},
+            )
+
+
+def fetch_documents_for_user(user_id: int, since, source=None, search=None, limit=50, offset=0) -> list[tuple]:
     conds = ["ud.user_id = %(user_id)s", "d.collected_at >= %(since)s"]
-    params = {"user_id": user_id, "since": since, "limit": limit}
+    params = {"user_id": user_id, "since": since, "limit": limit, "offset": offset}
 
     if source:
         conds.append("d.source = %(source)s")
@@ -598,18 +632,44 @@ def fetch_documents_for_user(user_id: int, since, source=None, search=None, limi
 
     where = " AND ".join(conds)
     query = f"""
-    SELECT d.id, d.source, d.title, d.published_at, d.url
+    SELECT d.id, d.source, d.title, d.published_at, d.url, ud.read_at
     FROM documents d
     JOIN user_documents ud ON d.id = ud.document_id
     WHERE {where}
     ORDER BY d.published_at DESC
-    LIMIT %(limit)s;
+    LIMIT %(limit)s
+    OFFSET %(offset)s;
     """
     conn = get_connection()
     with conn:
         with conn.cursor() as cur:
             cur.execute(query, params)
             return cur.fetchall()
+
+
+def count_documents_for_user(user_id: int, since, source=None, search=None) -> int:
+    conds = ["ud.user_id = %(user_id)s", "d.collected_at >= %(since)s"]
+    params = {"user_id": user_id, "since": since}
+
+    if source:
+        conds.append("d.source = %(source)s")
+        params["source"] = source
+    if search:
+        conds.append("d.title ILIKE %(search)s")
+        params["search"] = f"%{search}%"
+
+    where = " AND ".join(conds)
+    query = f"""
+    SELECT COUNT(*)
+    FROM documents d
+    JOIN user_documents ud ON d.id = ud.document_id
+    WHERE {where};
+    """
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+            return cur.fetchone()[0]
 
 
 # ─── Favorites & tags ─────────────────────────────────────────────────────────
