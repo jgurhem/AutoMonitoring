@@ -6,11 +6,12 @@ logger = logging.getLogger(__name__)
 
 NOVELTY_THRESHOLD = 0.5
 
-def main(published_since=7, collected_since=None, updated_since=None):
+def main(published_since=7, collected_since=None, updated_since=None, user_id=None):
     docs = fetch_novelty_scores(
         published_since=published_since,
         collected_since=collected_since,
         updated_since=updated_since,
+        user_id=user_id,
     )
     scored = [
         {**d, "novelty_score": 1 - d["nearest_similarity"]}

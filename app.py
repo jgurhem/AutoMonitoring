@@ -2,7 +2,6 @@ import argparse
 import io
 import logging
 import re
-import sys
 import textwrap
 from datetime import datetime, timedelta, timezone
 
@@ -259,7 +258,7 @@ elif page == "Processing":
                 from processors.novelty import main as novelty_main
                 import processors.novelty as _novelty_mod
                 _novelty_mod.NOVELTY_THRESHOLD = novelty_threshold
-                kwargs = {novelty_time_field: int(novelty_days)}
+                kwargs = {novelty_time_field: int(novelty_days), "user_id": user["id"]}
                 st.session_state["proc_output"] = capture_run(lambda: novelty_main(**kwargs))
 
     with col3:
@@ -269,12 +268,7 @@ elif page == "Processing":
         if st.button("Run cluster"):
             with st.spinner("Clustering..."):
                 from processors.cluster import main as cluster_main
-                old_argv = sys.argv
-                sys.argv = ["cluster"] + (["--new"] if new_only else [])
-                try:
-                    st.session_state["proc_output"] = capture_run(cluster_main)
-                finally:
-                    sys.argv = old_argv
+                st.session_state["proc_output"] = capture_run(lambda: cluster_main(new=new_only, user_id=user["id"]))
 
     with col4:
         st.subheader("Digest")
@@ -292,6 +286,7 @@ elif page == "Processing":
                         published_since=int(digest_days),
                         novelty_threshold=digest_threshold,
                         model=ollama_model,
+                        user_id=user["id"],
                     )
                 )
 

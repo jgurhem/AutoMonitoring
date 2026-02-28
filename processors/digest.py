@@ -20,8 +20,9 @@ def main(
     novelty_threshold: float | None = None,
     model: str = MODEL,
     num_predict: int = 4096,
+    user_id=None,
 ):
-    docs = fetch_summaries_since(published_since, novelty_threshold)
+    docs = fetch_summaries_since(published_since, novelty_threshold, user_id=user_id)
     if not docs:
         logger.info("No articles found for the given parameters.")
         return

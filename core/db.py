@@ -104,14 +104,15 @@ def save_summary(doc_id: str, summary: str):
             cur.execute(query, {"id": doc_id, "summary": summary})
     conn.close()
 
-def fetch_summaries_since(published_since: int, novelty_threshold: float | None = None) -> list[dict]:
+def fetch_summaries_since(published_since: int, novelty_threshold: float | None = None, user_id: int | None = None) -> list[dict]:
     conds = [
-        "summary IS NOT NULL",
-        "published_at >= NOW() - INTERVAL '1 day' * %(published_since)s",
+        "d1.summary IS NOT NULL",
+        "d1.published_at >= NOW() - INTERVAL '1 day' * %(published_since)s",
     ]
     if novelty_threshold is not None:
-        conds.append("embedding IS NOT NULL")
+        conds.append("d1.embedding IS NOT NULL")
 
+    join = "JOIN user_documents ud ON ud.document_id = d1.id AND ud.user_id = %(user_id)s" if user_id is not None else ""
     where = " AND ".join(conds)
     query = f"""
     SELECT d1.id, d1.title, d1.summary,
@@ -123,13 +124,17 @@ def fetch_summaries_since(published_since: int, novelty_threshold: float | None 
             LIMIT 1
         ) AS novelty_score
     FROM documents d1
+    {join}
     WHERE {where}
     ORDER BY d1.published_at DESC;
     """
+    params = {"published_since": published_since}
+    if user_id is not None:
+        params["user_id"] = user_id
     conn = get_connection()
     with conn:
         with conn.cursor() as cur:
-            cur.execute(query, {"published_since": published_since})
+            cur.execute(query, params)
             rows = cur.fetchall()
     conn.close()
     docs = [{"id": r[0], "title": r[1], "summary": r[2], "novelty_score": r[3]} for r in rows]
@@ -199,6 +204,7 @@ def fetch_novelty_scores(
     published_since: int | None = None,
     collected_since: int | None = None,
     updated_since: int | None = None,
+    user_id: int | None = None,
 ) -> list[dict]:
     conds = ["d1.embedding IS NOT NULL"]
     params = {}
@@ -211,6 +217,10 @@ def fetch_novelty_scores(
     if updated_since is not None:
         conds.append("d1.updated_at >= NOW() - INTERVAL '1 day' * %(updated_since)s")
         params["updated_since"] = updated_since
+    join = ""
+    if user_id is not None:
+        join = "JOIN user_documents ud ON ud.document_id = d1.id AND ud.user_id = %(user_id)s"
+        params["user_id"] = user_id
 
     where = " AND ".join(conds)
     query = f"""
@@ -223,6 +233,7 @@ def fetch_novelty_scores(
             LIMIT 1
         ) AS nearest_similarity
     FROM documents d1
+    {join}
     WHERE {where};
     """
     conn = get_connection()
@@ -315,17 +326,27 @@ def search_similar(vec, top_k: int = 10) -> list[tuple]:
     conn.close()
 
 
-def fetch_all_embeddings() -> list[dict]:
+def fetch_all_embeddings(user_id: int | None = None) -> list[dict]:
     import numpy as np
-    query = """
-    SELECT id, title, embedding, published_at
-    FROM documents
-    WHERE embedding IS NOT NULL;
-    """
+    if user_id is not None:
+        query = """
+        SELECT d.id, d.title, d.embedding, d.published_at
+        FROM documents d
+        JOIN user_documents ud ON d.id = ud.document_id
+        WHERE d.embedding IS NOT NULL AND ud.user_id = %(user_id)s;
+        """
+        params = {"user_id": user_id}
+    else:
+        query = """
+        SELECT id, title, embedding, published_at
+        FROM documents
+        WHERE embedding IS NOT NULL;
+        """
+        params = {}
     conn = get_connection()
     with conn:
         with conn.cursor() as cur:
-            cur.execute(query)
+            cur.execute(query, params)
             rows = cur.fetchall()
     conn.close()
     return [

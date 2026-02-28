@@ -44,8 +44,8 @@ def log_cluster(label: str, members: list, indent: str = "", only_new: bool = Fa
     if len(visible) > PREVIEW_SIZE:
         logger.info(f"{indent}  ... and {len(visible) - PREVIEW_SIZE} more")
 
-def main(new: bool = False):
-    docs = fetch_all_embeddings()
+def main(new: bool = False, user_id=None):
+    docs = fetch_all_embeddings(user_id=user_id)
     if not docs:
         logger.info("No documents with embeddings found.")
         return
