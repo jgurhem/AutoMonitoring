@@ -73,7 +73,6 @@ def show(user: dict):
     st.write("**Add a feed:**")
     with st.form("add_rss_feed"):
         new_feed_url = st.text_input("Feed URL")
-        new_feed_name = st.text_input("Display name (optional)")
         # Also show existing catalog feeds not yet subscribed
         all_feeds = db.get_all_rss_feeds()
         subscribed_ids = {f["feed_id"] for f in current_feeds}
@@ -89,9 +88,12 @@ def show(user: dict):
                 st.success("Subscribed.")
                 st.rerun()
             elif new_feed_url:
-                feed_id = db.get_or_create_rss_feed(new_feed_url, new_feed_name or None)
+                import feedparser
+                parsed = feedparser.parse(new_feed_url)
+                feed_name = parsed.feed.get("title") or None
+                feed_id = db.get_or_create_rss_feed(new_feed_url, feed_name)
                 db.subscribe_user_to_feed(user_id, feed_id)
-                st.success("Subscribed.")
+                st.success(f"Subscribed to {feed_name or new_feed_url}.")
                 st.rerun()
             else:
                 st.error("Enter a URL or select a feed from the catalog.")
