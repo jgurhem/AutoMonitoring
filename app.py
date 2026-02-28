@@ -171,10 +171,16 @@ elif page == "Processing":
     with col2:
         st.subheader("Novelty")
         st.write("Score documents by how different they are from the rest.")
+        novelty_threshold = st.slider("Threshold", 0.0, 1.0, 0.6, 0.05, key="novelty_threshold")
+        novelty_time_field = st.selectbox("Filter by", ["published_since", "collected_since", "updated_since"], key="novelty_time_field")
+        novelty_days = st.number_input("Last N days", min_value=1, max_value=365, value=7, key="novelty_days")
         if st.button("Run novelty"):
             with st.spinner("Computing novelty scores..."):
                 from processors.novelty import main as novelty_main
-                st.session_state["proc_output"] = capture_run(novelty_main)
+                import processors.novelty as _novelty_mod
+                _novelty_mod.NOVELTY_THRESHOLD = novelty_threshold
+                kwargs = {novelty_time_field: int(novelty_days)}
+                st.session_state["proc_output"] = capture_run(lambda: novelty_main(**kwargs))
 
     with col3:
         st.subheader("Cluster")
