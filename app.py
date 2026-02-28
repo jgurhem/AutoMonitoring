@@ -181,7 +181,12 @@ if page == "Browse":
     df = pd.DataFrame(rows, columns=["id", "source", "title", "published_at", "url", "read_at"])
     df["read"] = df["read_at"].apply(lambda x: "✓" if pd.notna(x) else "")
     unread = int(df["read_at"].isna().sum())
-    st.caption(f"{total} documents ({unread} unread on this page)")
+
+    cap_col, markall_col = st.columns([5, 1])
+    cap_col.caption(f"{total} documents ({unread} unread on this page)")
+    if markall_col.button("Mark all read"):
+        db.mark_all_read_for_user(user["id"], since, source_filter, search or None)
+        st.rerun()
 
     sel = st.dataframe(
         df[["read", "source", "title", "published_at"]],

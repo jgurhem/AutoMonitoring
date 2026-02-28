@@ -49,7 +49,6 @@ def show(user: dict):
                 pref_digest_days=int(digest_days),
                 pref_digest_novelty_threshold=digest_novelty_threshold,
             )
-            # Refresh session state
             updated = db.get_user_by_username(user["username"])
             st.session_state["user"] = {k: v for k, v in updated.items() if k != "password_hash"}
             st.success("Defaults saved.")
@@ -62,18 +61,35 @@ def show(user: dict):
     current_feeds = db.get_user_rss_feeds(user_id)
     if current_feeds:
         for feed in current_feeds:
+            feed_id = feed["feed_id"]
+            last = feed.get("last_collected_at")
+            last_str = str(last)[:10] if last else "Never"
             col1, col2 = st.columns([5, 1])
-            col1.write(f"**{feed['name'] or feed['url']}**  \n{feed['url']}")
-            if col2.button("Remove", key=f"unsub_rss_{feed['feed_id']}"):
-                db.unsubscribe_user_from_feed(user_id, feed["feed_id"])
-                st.rerun()
+            col1.write(
+                f"**{feed['name'] or feed['url']}**  \n"
+                f"`{feed['url']}`  \n"
+                f"Last collected: {last_str}"
+            )
+            confirm_key = f"confirm_unsub_rss_{feed_id}"
+            if st.session_state.get(confirm_key):
+                col2.write("Sure?")
+                if col2.button("Yes", key=f"unsub_rss_yes_{feed_id}"):
+                    db.unsubscribe_user_from_feed(user_id, feed_id)
+                    del st.session_state[confirm_key]
+                    st.rerun()
+                if col2.button("No", key=f"unsub_rss_no_{feed_id}"):
+                    del st.session_state[confirm_key]
+                    st.rerun()
+            else:
+                if col2.button("Remove", key=f"unsub_rss_{feed_id}"):
+                    st.session_state[confirm_key] = True
+                    st.rerun()
     else:
         st.caption("No RSS feeds subscribed.")
 
     st.write("**Add a feed:**")
     with st.form("add_rss_feed"):
         new_feed_url = st.text_input("Feed URL")
-        # Also show existing catalog feeds not yet subscribed
         all_feeds = db.get_all_rss_feeds()
         subscribed_ids = {f["feed_id"] for f in current_feeds}
         catalog_feeds = [f for f in all_feeds if f["id"] not in subscribed_ids]
@@ -106,13 +122,63 @@ def show(user: dict):
     current_searches = db.get_user_arxiv_searches(user_id)
     if current_searches:
         for s in current_searches:
+            search_id = s["search_id"]
+            last = s.get("last_collected_at")
+            last_str = str(last)[:10] if last else "Never"
             col1, col2 = st.columns([5, 1])
-            col1.write(f"`{s['query']}`  (max {s['max_results']} results)")
-            if col2.button("Remove", key=f"unsub_arxiv_{s['search_id']}"):
-                db.unsubscribe_user_from_search(user_id, s["search_id"])
-                st.rerun()
+            col1.write(
+                f"`{s['query']}`  (max {s['max_results']} results)  \n"
+                f"Last collected: {last_str}"
+            )
+            confirm_key = f"confirm_unsub_arxiv_{search_id}"
+            if st.session_state.get(confirm_key):
+                col2.write("Sure?")
+                if col2.button("Yes", key=f"unsub_arxiv_yes_{search_id}"):
+                    db.unsubscribe_user_from_search(user_id, search_id)
+                    del st.session_state[confirm_key]
+                    st.rerun()
+                if col2.button("No", key=f"unsub_arxiv_no_{search_id}"):
+                    del st.session_state[confirm_key]
+                    st.rerun()
+            else:
+                if col2.button("Remove", key=f"unsub_arxiv_{search_id}"):
+                    st.session_state[confirm_key] = True
+                    st.rerun()
     else:
         st.caption("No arXiv searches subscribed.")
+
+    # ─── ArXiv query preview ──────────────────────────────────────────────────
+    st.write("**Preview a query:**")
+    prev_col1, prev_col2 = st.columns([4, 1])
+    preview_query = prev_col1.text_input("Query to preview", key="arxiv_preview_query_input")
+    if prev_col2.button("Preview", key="arxiv_preview_btn"):
+        if preview_query:
+            with st.spinner("Fetching preview..."):
+                import arxiv as arxiv_lib
+                client = arxiv_lib.Client()
+                papers = list(client.results(arxiv_lib.Search(
+                    query=preview_query,
+                    max_results=5,
+                    sort_by=arxiv_lib.SortCriterion.SubmittedDate,
+                )))
+                st.session_state["arxiv_preview"] = [
+                    {
+                        "title": p.title,
+                        "authors": [a.name for a in p.authors[:3]],
+                        "published": p.published.strftime("%Y-%m-%d"),
+                        "url": p.entry_id,
+                    }
+                    for p in papers
+                ]
+        else:
+            st.warning("Enter a query to preview.")
+
+    if st.session_state.get("arxiv_preview"):
+        for r in st.session_state["arxiv_preview"]:
+            st.write(
+                f"- **{r['title']}** ({r['published']}) — {', '.join(r['authors'])}  \n"
+                f"  [{r['url']}]({r['url']})"
+            )
 
     st.write("**Add a search:**")
     with st.form("add_arxiv_search"):

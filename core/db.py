@@ -494,13 +494,13 @@ def get_user_rss_feeds(user_id: int) -> list[dict]:
     with conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT f.id, f.url, f.name FROM rss_feeds f "
+                "SELECT f.id, f.url, f.name, f.last_collected_at FROM rss_feeds f "
                 "JOIN user_rss_feeds uf ON f.id = uf.feed_id "
                 "WHERE uf.user_id = %(uid)s ORDER BY f.id;",
                 {"uid": user_id},
             )
             rows = cur.fetchall()
-    return [{"feed_id": r[0], "url": r[1], "name": r[2]} for r in rows]
+    return [{"feed_id": r[0], "url": r[1], "name": r[2], "last_collected_at": r[3]} for r in rows]
 
 
 def subscribe_user_to_feed(user_id: int, feed_id: int):
@@ -528,13 +528,13 @@ def get_user_arxiv_searches(user_id: int) -> list[dict]:
     with conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT s.id, s.query, s.max_results FROM arxiv_searches s "
+                "SELECT s.id, s.query, s.max_results, s.last_collected_at FROM arxiv_searches s "
                 "JOIN user_arxiv_searches us ON s.id = us.search_id "
                 "WHERE us.user_id = %(uid)s ORDER BY s.id;",
                 {"uid": user_id},
             )
             rows = cur.fetchall()
-    return [{"search_id": r[0], "query": r[1], "max_results": r[2]} for r in rows]
+    return [{"search_id": r[0], "query": r[1], "max_results": r[2], "last_collected_at": r[3]} for r in rows]
 
 
 def subscribe_user_to_search(user_id: int, search_id: int):
@@ -617,6 +617,68 @@ def mark_document_unread(user_id: int, doc_id: str):
                 "WHERE user_id = %(uid)s AND document_id = %(did)s;",
                 {"uid": user_id, "did": doc_id},
             )
+
+
+def mark_all_read_for_user(user_id: int, since, source=None, search=None):
+    conds = ["ud.user_id = %(user_id)s", "d.collected_at >= %(since)s", "ud.read_at IS NULL"]
+    params = {"user_id": user_id, "since": since}
+    if source:
+        conds.append("d.source = %(source)s")
+        params["source"] = source
+    if search:
+        conds.append("d.title ILIKE %(search)s")
+        params["search"] = f"%{search}%"
+    where = " AND ".join(conds)
+    query = f"""
+    UPDATE user_documents ud
+    SET read_at = NOW()
+    FROM documents d
+    WHERE ud.document_id = d.id AND {where};
+    """
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+
+
+def update_rss_feed_collected_at(feed_id: int):
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE rss_feeds SET last_collected_at = NOW() WHERE id = %(id)s;",
+                {"id": feed_id},
+            )
+
+
+def update_arxiv_search_collected_at(search_id: int):
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE arxiv_searches SET last_collected_at = NOW() WHERE id = %(id)s;",
+                {"id": search_id},
+            )
+
+
+def get_all_document_tags_for_user(user_id: int) -> dict:
+    """Returns {doc_id: [tag_name, ...]} for all tagged documents of a user."""
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT udt.document_id, t.name "
+                "FROM user_document_tags udt "
+                "JOIN tags t ON t.id = udt.tag_id "
+                "WHERE udt.user_id = %(uid)s "
+                "ORDER BY udt.document_id, t.name;",
+                {"uid": user_id},
+            )
+            rows = cur.fetchall()
+    result: dict = {}
+    for doc_id, tag_name in rows:
+        result.setdefault(doc_id, []).append(tag_name)
+    return result
 
 
 def fetch_documents_for_user(user_id: int, since, source=None, search=None, limit=50, offset=0) -> list[tuple]:

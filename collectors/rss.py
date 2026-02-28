@@ -2,7 +2,7 @@ import feedparser
 import trafilatura
 from datetime import datetime, timezone
 import hashlib
-from core.db import insert_document, is_recently_collected
+from core.db import insert_document, is_recently_collected, update_rss_feed_collected_at
 from core.logger import get_logger
 
 logger = get_logger("rss")
@@ -55,6 +55,7 @@ def collect_rss_feeds(feeds: list[dict], max_per_feed: int = 10) -> dict[int, li
             except Exception as e:
                 logger.error("Erreur sur %s: %s", entry.link, e)
 
+        update_rss_feed_collected_at(feed_id)
         results[feed_id] = doc_ids
 
     return results

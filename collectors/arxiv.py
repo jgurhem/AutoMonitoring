@@ -3,7 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 from datetime import datetime, timezone
 import hashlib
-from core.db import insert_document, is_recently_collected
+from core.db import insert_document, is_recently_collected, update_arxiv_search_collected_at
 from core.logger import get_logger
 
 logger = get_logger("arxiv")
@@ -76,6 +76,7 @@ def collect_arxiv_searches(searches: list[dict]) -> dict[int, list[str]]:
             })
             doc_ids.append(doc_id)
 
+        update_arxiv_search_collected_at(search_id)
         results[search_id] = doc_ids
 
     return results

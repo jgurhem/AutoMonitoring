@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS rss_feeds (
     id SERIAL PRIMARY KEY,
     url TEXT UNIQUE NOT NULL,
     name TEXT,
+    last_collected_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS arxiv_searches (
     id SERIAL PRIMARY KEY,
     query TEXT UNIQUE NOT NULL,
     max_results INTEGER DEFAULT 10,
+    last_collected_at TIMESTAMP,
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
@@ -90,3 +92,4 @@ CREATE TABLE IF NOT EXISTS user_document_tags (
     tag_id INTEGER REFERENCES tags(id) ON DELETE CASCADE,
     PRIMARY KEY (user_id, document_id, tag_id)
 );
+
