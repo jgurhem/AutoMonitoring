@@ -4,9 +4,9 @@ from core.db import fetch_novelty_scores
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
-NOVELTY_THRESHOLD = 0.5
+DEFAULT_NOVELTY_THRESHOLD = 0.5
 
-def main(published_since=7, collected_since=None, updated_since=None, user_id=None):
+def main(published_since=7, collected_since=None, updated_since=None, user_id=None, threshold=DEFAULT_NOVELTY_THRESHOLD):
     docs = fetch_novelty_scores(
         published_since=published_since,
         collected_since=collected_since,
@@ -18,7 +18,7 @@ def main(published_since=7, collected_since=None, updated_since=None, user_id=No
         for d in docs
         if d["nearest_similarity"] is not None
     ]
-    novel = [d for d in scored if d["novelty_score"] > NOVELTY_THRESHOLD]
+    novel = [d for d in scored if d["novelty_score"] > threshold]
     novel.sort(key=lambda d: d["novelty_score"], reverse=True)
 
     for d in novel:
@@ -26,5 +26,5 @@ def main(published_since=7, collected_since=None, updated_since=None, user_id=No
 
     logger.info(
         f"Summary: {len(novel)} novel / {len(scored)} total "
-        f"(threshold={NOVELTY_THRESHOLD})"
+        f"(threshold={threshold})"
     )

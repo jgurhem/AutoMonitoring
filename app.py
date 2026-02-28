@@ -256,9 +256,7 @@ elif page == "Processing":
         if st.button("Run novelty"):
             with st.spinner("Computing novelty scores..."):
                 from processors.novelty import main as novelty_main
-                import processors.novelty as _novelty_mod
-                _novelty_mod.NOVELTY_THRESHOLD = novelty_threshold
-                kwargs = {novelty_time_field: int(novelty_days), "user_id": user["id"]}
+                kwargs = {novelty_time_field: int(novelty_days), "user_id": user["id"], "threshold": novelty_threshold}
                 st.session_state["proc_output"] = capture_run(lambda: novelty_main(**kwargs))
 
     with col3:
