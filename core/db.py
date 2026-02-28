@@ -236,32 +236,6 @@ def fetch_novelty_scores(
         for r in rows
     ]
 
-def fetch_documents(since, source=None, search=None, limit=500) -> list[tuple]:
-    conds = ["collected_at >= %(since)s"]
-    params = {"since": since, "limit": limit}
-
-    if source:
-        conds.append("source = %(source)s")
-        params["source"] = source
-    if search:
-        conds.append("title ILIKE %(search)s")
-        params["search"] = f"%{search}%"
-
-    where = " AND ".join(conds)
-    query = f"""
-    SELECT id, source, title, published_at, url
-    FROM documents
-    WHERE {where}
-    ORDER BY published_at DESC
-    LIMIT %(limit)s;
-    """
-    conn = get_connection()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(query, params)
-            return cur.fetchall()
-    conn.close()
-
 
 def fetch_document(doc_id: str) -> tuple | None:
     query = """
