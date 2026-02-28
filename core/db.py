@@ -342,7 +342,7 @@ def get_user_by_username(username: str) -> dict | None:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT id, username, password_hash, is_admin, is_active, "
-                "pref_novelty_threshold, pref_digest_days, pref_digest_novelty_threshold, pref_digest_model "
+                "pref_novelty_threshold, pref_digest_days, pref_digest_novelty_threshold "
                 "FROM users WHERE username = %(username)s;",
                 {"username": username},
             )
@@ -354,7 +354,7 @@ def get_user_by_username(username: str) -> dict | None:
         "id": row[0], "username": row[1], "password_hash": row[2],
         "is_admin": row[3], "is_active": row[4],
         "pref_novelty_threshold": row[5], "pref_digest_days": row[6],
-        "pref_digest_novelty_threshold": row[7], "pref_digest_model": row[8],
+        "pref_digest_novelty_threshold": row[7],
     }
 
 
@@ -411,7 +411,7 @@ def update_user_password(user_id: int, password_hash: str):
 def update_user_prefs(user_id: int, **prefs):
     allowed = {
         "pref_novelty_threshold", "pref_digest_days",
-        "pref_digest_novelty_threshold", "pref_digest_model",
+        "pref_digest_novelty_threshold",
     }
     updates = {k: v for k, v in prefs.items() if k in allowed}
     if not updates:

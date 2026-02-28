@@ -42,16 +42,12 @@ def show(user: dict):
             "Digest novelty threshold (optional)", 0.0, 1.0,
             float(user.get("pref_digest_novelty_threshold") or 0.5), 0.05,
         )
-        digest_model = st.text_input(
-            "Digest model", value=user.get("pref_digest_model") or "mixtral"
-        )
         if st.form_submit_button("Save defaults"):
             db.update_user_prefs(
                 user_id,
                 pref_novelty_threshold=novelty_threshold,
                 pref_digest_days=int(digest_days),
                 pref_digest_novelty_threshold=digest_novelty_threshold,
-                pref_digest_model=digest_model,
             )
             # Refresh session state
             updated = db.get_user_by_username(user["username"])

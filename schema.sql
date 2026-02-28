@@ -33,8 +33,7 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     pref_novelty_threshold FLOAT DEFAULT 0.6,
     pref_digest_days INTEGER DEFAULT 7,
-    pref_digest_novelty_threshold FLOAT,
-    pref_digest_model TEXT DEFAULT 'mixtral'
+    pref_digest_novelty_threshold FLOAT
 );
 
 CREATE TABLE IF NOT EXISTS rss_feeds (

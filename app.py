@@ -234,7 +234,6 @@ elif page == "Processing":
     # Load user's saved defaults
     pref_novelty = float(user.get("pref_novelty_threshold") or 0.6)
     pref_digest_days = int(user.get("pref_digest_days") or 7)
-    pref_digest_model = user.get("pref_digest_model") or ollama_model
 
     col1, col2, col3, col4 = st.columns(4)
 
@@ -292,7 +291,7 @@ elif page == "Processing":
                     lambda: digest_main(
                         published_since=int(digest_days),
                         novelty_threshold=digest_threshold,
-                        model=pref_digest_model,
+                        model=ollama_model,
                     )
                 )
 
