@@ -2,7 +2,7 @@ import argparse
 from processors.cluster import main as cluster_main
 from processors.dedup import main as dedup_main
 from processors.novelty import main as novelty_main
-from processors.digest import main as digest_main
+from processors.summarize import digest as digest_main
 
 def main():
     parser = argparse.ArgumentParser(description="Run the processing pipeline")
