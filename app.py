@@ -12,18 +12,39 @@ import pandas as pd
 import streamlit as st
 
 import core.db as db
+from core.auth import current_user
 
 st.set_page_config(page_title="Monitoring", layout="wide", page_icon="📡")
+
+# ─── Auth gate ───────────────────────────────────────────────────────────────
+
+if "user" not in st.session_state:
+    from ui.login import show as show_login
+    show_login()
+    st.stop()
+
+user = current_user()
+
+# ─── Sidebar / navigation ─────────────────────────────────────────────────────
 
 _arg_parser = argparse.ArgumentParser(add_help=False)
 _arg_parser.add_argument("--model", default="mixtral")
 _args, _ = _arg_parser.parse_known_args()
 ollama_model = _args.model
 
-page = st.sidebar.radio("Navigation", ["Browse", "Stats", "Semantic Search", "Processing"])
+nav_pages = ["Browse", "Stats", "Semantic Search", "Processing", "Favorites", "Profile"]
+if user.get("is_admin"):
+    nav_pages.append("Admin: Users")
+
+with st.sidebar:
+    page = st.radio("Navigation", nav_pages)
+    st.divider()
+    st.caption(f"Logged in as **{user['username']}**" + (" (admin)" if user.get("is_admin") else ""))
+    if st.button("Logout"):
+        del st.session_state["user"]
+        st.rerun()
 
 _screen_width = streamlit_js_eval(js_expressions="window.innerWidth", key="screen_width")
-# sidebar (~240px) + padding (~64px), ~7.5px per monospace char
 wrap_width = max(80, int((_screen_width - 304) / 7.5)) if _screen_width else 120
 
 
@@ -48,12 +69,23 @@ def show_document(doc_id):
     d = db.fetch_document(doc_id)
     if not d:
         return
-    title, authors, url, description, content, categories, published_at = d
+    title, authors, doc_url, description, content, categories, published_at = d
     st.divider()
+
+    # Favorite toggle
+    fav = db.is_favorite(user["id"], doc_id)
+    fav_label = "★ Remove from favorites" if fav else "☆ Add to favorites"
+    if st.button(fav_label, key=f"fav_toggle_{doc_id}"):
+        if fav:
+            db.remove_favorite(user["id"], doc_id)
+        else:
+            db.add_favorite(user["id"], doc_id)
+        st.rerun()
+
     st.subheader(title)
     meta = []
-    if url:
-        meta.append(f"[Open]({url})")
+    if doc_url:
+        meta.append(f"[Open]({doc_url})")
     if published_at:
         meta.append(str(published_at)[:10])
     if categories:
@@ -64,6 +96,40 @@ def show_document(doc_id):
     st.write(description or "")
     with st.expander("Full content"):
         st.write(content or "")
+
+    # Note & tags (only show if favorited)
+    if fav or db.is_favorite(user["id"], doc_id):
+        st.write("**Tags:**")
+        all_tags = db.get_tags()
+        doc_tags = db.get_document_tags(user["id"], doc_id)
+        tag_names = [t["name"] for t in all_tags]
+
+        col_t1, col_t2 = st.columns([3, 1])
+        new_tag = col_t1.text_input("Add tag", key=f"addtag_input_{doc_id}")
+        if col_t2.button("Add", key=f"addtag_btn_{doc_id}") and new_tag:
+            tag_id = db.create_tag(new_tag.strip().lower())
+            db.tag_document(user["id"], doc_id, tag_id)
+            st.rerun()
+
+        if doc_tags:
+            st.write("Tags: " + ", ".join(f"`{t}`" for t in doc_tags))
+            rm_tag = st.selectbox("Remove tag", [""] + doc_tags, key=f"rmtag_{doc_id}")
+            if st.button("Remove", key=f"rmtagbtn_{doc_id}") and rm_tag:
+                tag_obj = next((t for t in all_tags if t["name"] == rm_tag), None)
+                if tag_obj:
+                    db.untag_document(user["id"], doc_id, tag_obj["id"])
+                    st.rerun()
+
+        note_val = ""
+        favs = db.get_user_favorites(user["id"])
+        for f in favs:
+            if f["id"] == doc_id:
+                note_val = f["note"] or ""
+                break
+        note = st.text_area("Note", value=note_val, key=f"note_{doc_id}")
+        if st.button("Save note", key=f"savenote_{doc_id}"):
+            db.update_favorite_note(user["id"], doc_id, note)
+            st.success("Note saved.")
 
 
 # ─── Browse ─────────────────────────────────────────────────────────────────
@@ -76,7 +142,8 @@ if page == "Browse":
     days = c2.number_input("Collected last N days", min_value=1, max_value=365, value=30)
     search = c3.text_input("Search title")
 
-    rows = db.fetch_documents(
+    rows = db.fetch_documents_for_user(
+        user_id=user["id"],
         since=datetime.now(timezone.utc) - timedelta(days=int(days)),
         source=source if source != "all" else None,
         search=search or None,
@@ -164,20 +231,28 @@ elif page == "Semantic Search":
 elif page == "Processing":
     st.title("Processing")
 
+    # Load user's saved defaults
+    pref_novelty = float(user.get("pref_novelty_threshold") or 0.6)
+    pref_digest_days = int(user.get("pref_digest_days") or 7)
+    pref_digest_model = user.get("pref_digest_model") or ollama_model
+
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         st.subheader("Deduplicate")
         st.write("Find near-duplicate documents using cosine similarity.")
-        if st.button("Run dedup"):
-            with st.spinner("Finding duplicates..."):
-                from processors.dedup import main as dedup_main
-                st.session_state["proc_output"] = capture_run(dedup_main)
+        if user.get("is_admin"):
+            if st.button("Run dedup"):
+                with st.spinner("Finding duplicates..."):
+                    from processors.dedup import main as dedup_main
+                    st.session_state["proc_output"] = capture_run(dedup_main)
+        else:
+            st.info("Admin only.")
 
     with col2:
         st.subheader("Novelty")
         st.write("Score documents by how different they are from the rest.")
-        novelty_threshold = st.slider("Threshold", 0.0, 1.0, 0.6, 0.05, key="novelty_threshold")
+        novelty_threshold = st.slider("Threshold", 0.0, 1.0, pref_novelty, 0.05, key="novelty_threshold")
         novelty_time_field = st.selectbox("Filter by", ["published_since", "collected_since", "updated_since"], key="novelty_time_field")
         novelty_days = st.number_input("Last N days", min_value=1, max_value=365, value=7, key="novelty_days")
         if st.button("Run novelty"):
@@ -205,7 +280,7 @@ elif page == "Processing":
     with col4:
         st.subheader("Digest")
         st.write("Generate a meta-summary of recent article summaries.")
-        digest_days = st.number_input("Published last N days", min_value=1, max_value=15, value=7, key="digest_days")
+        digest_days = st.number_input("Published last N days", min_value=1, max_value=15, value=pref_digest_days, key="digest_days")
         digest_novelty = st.checkbox("Novel articles only", key="digest_novelty")
         digest_threshold = None
         if digest_novelty:
@@ -217,7 +292,7 @@ elif page == "Processing":
                     lambda: digest_main(
                         published_since=int(digest_days),
                         novelty_threshold=digest_threshold,
-                        model=ollama_model,
+                        model=pref_digest_model,
                     )
                 )
 
@@ -230,3 +305,27 @@ elif page == "Processing":
             for line in clean.splitlines()
         )
         st.code(wrapped)
+
+
+# ─── Favorites ────────────────────────────────────────────────────────────────
+
+elif page == "Favorites":
+    from ui.favorites import show as show_favorites
+    show_favorites(user)
+
+
+# ─── Profile ──────────────────────────────────────────────────────────────────
+
+elif page == "Profile":
+    from ui.profile import show as show_profile
+    show_profile(user)
+
+
+# ─── Admin: Users ─────────────────────────────────────────────────────────────
+
+elif page == "Admin: Users":
+    if not user.get("is_admin"):
+        st.error("Admin access required.")
+        st.stop()
+    from ui.admin_users import show as show_admin_users
+    show_admin_users()

@@ -10,36 +10,6 @@ logger = get_logger("arxiv")
 
 DEFAULT_MAX_RESULTS = 10
 
-SEARCHES = [
-    {
-        "query": "(artificial intelligence OR large language model OR transformer OR agent OR Deep Learning) AND (cat:cs.AI OR cat:cs.CL OR cat:cs.LG OR cat:cs.CV OR cat:cs.NE OR cat:cs.MA)",
-        "sort_by": arxiv.SortCriterion.SubmittedDate,
-        "max_results": 50,
-    },
-    {
-        "query": "artificial intelligence OR large language model OR transformer",
-        "sort_by": arxiv.SortCriterion.SubmittedDate,
-        "max_results": 50,
-    },
-    {
-        "query": "artificial intelligence OR large language model OR transformer",
-        "sort_by": arxiv.SortCriterion.Relevance,
-        "max_results": 50,
-    },
-    {
-        "query": "au:'Yann LeCun' AND cat:cs.AI",
-        "sort_by": arxiv.SortCriterion.SubmittedDate,
-    },
-    {
-        "query": "au:'Torsten Hoefler'",
-        "sort_by": arxiv.SortCriterion.SubmittedDate,
-    },
-    {
-        "query": "au:'Jack Dongarra'",
-        "sort_by": arxiv.SortCriterion.SubmittedDate,
-    },
-]
-
 def hash_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -59,18 +29,22 @@ def fetch_arxiv_content(html_url: str) -> str | None:
     article = soup.find("article") or soup.find("body")
     return article.get_text(separator="\n", strip=True) if article else None
 
-def collect_arxiv():
-    count = 0
 
+def collect_arxiv_searches(searches: list[dict]) -> dict[int, list[str]]:
+    """Collect from a list of {search_id, query, max_results} dicts. Returns {search_id: [doc_ids]}."""
+    results: dict[int, list[str]] = {}
     client = arxiv.Client()
-    seen = set()
 
-    for s in SEARCHES:
+    for search_info in searches:
+        search_id = search_info["search_id"]
+        doc_ids: list[str] = []
+
         search = arxiv.Search(
-            query=s["query"],
-            max_results=s.get("max_results", DEFAULT_MAX_RESULTS),
-            sort_by=s["sort_by"],
+            query=search_info["query"],
+            max_results=search_info.get("max_results", DEFAULT_MAX_RESULTS),
+            sort_by=arxiv.SortCriterion.SubmittedDate,
         )
+        seen = set()
         for paper in client.results(search):
             if paper.entry_id in seen:
                 continue
@@ -85,9 +59,10 @@ def collect_arxiv():
             html_url = paper.entry_id.replace("/abs/", "/html/")
             content = fetch_arxiv_content(html_url)
 
+            doc_id = hash_text(description)
             logger.info("Inséré: %s", paper.title)
             insert_document({
-                "id": hash_text(description),
+                "id": doc_id,
                 "source": "arxiv",
                 "title": paper.title,
                 "authors": [a.name for a in paper.authors],
@@ -99,6 +74,8 @@ def collect_arxiv():
                 "updated_at": paper.updated.isoformat(),
                 "collected_at": datetime.now(timezone.utc).isoformat(),
             })
-            count += 1
+            doc_ids.append(doc_id)
 
-    return count
+        results[search_id] = doc_ids
+
+    return results

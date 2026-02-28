@@ -7,34 +7,20 @@ from core.logger import get_logger
 
 logger = get_logger("rss")
 
-RSS_FEEDS = [
-    "https://www.technologyreview.com/topic/artificial-intelligence/feed/",
-    "https://towardsdatascience.com/feed",
-    "https://machinelearningmastery.com/blog/feed/",
-    "https://www.marktechpost.com/feed/",
-    "https://news.mit.edu/rss/topic/artificial-intelligence2",
-    "https://www.aiiottalk.com/feed/",
-    "https://research.google/blog/rss/",
-    "https://techcrunch.com/tag/artificial-intelligence/feed/",
-    "https://tldr.tech/api/rss/ai",
-    "https://tldr.tech/api/rss/tech",
-    "https://tldr.tech/api/rss/dev",
-    "https://rss.beehiiv.com/feeds/2R3C6Bt5wj.xml",
-    "https://www.actuia.com/feed/",
-    "https://www.aiplusinfo.com/feed/",
-    "https://deepmind.com/blog/feed/basic/",
-    "https://www.greatlearning.in/blog/category/artificial-intelligence/feed/",
-]
 
 def hash_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-def collect_rss(max_per_feed=10):
-    count = 0
+def collect_rss_feeds(feeds: list[dict], max_per_feed: int = 10) -> dict[int, list[str]]:
+    """Collect from a list of {feed_id, url} dicts. Returns {feed_id: [doc_ids]}."""
+    results: dict[int, list[str]] = {}
 
-    for feed_url in RSS_FEEDS:
+    for feed_info in feeds:
+        feed_id = feed_info["feed_id"]
+        feed_url = feed_info["url"]
+        doc_ids: list[str] = []
+
         feed = feedparser.parse(feed_url)
-
         for entry in feed.entries[:max_per_feed]:
             try:
                 if is_recently_collected(entry.link):
@@ -51,8 +37,9 @@ def collect_rss(max_per_feed=10):
                     [entry.author] if entry.get("author") else []
                 )
 
+                doc_id = hash_text(content)
                 insert_document({
-                    "id": hash_text(content),
+                    "id": doc_id,
                     "source": "rss",
                     "title": entry.title,
                     "authors": authors,
@@ -63,9 +50,11 @@ def collect_rss(max_per_feed=10):
                     "collected_at": datetime.now(timezone.utc).isoformat()
                 })
                 logger.info("Inséré: %s", entry.title)
-                count += 1
+                doc_ids.append(doc_id)
 
             except Exception as e:
                 logger.error("Erreur sur %s: %s", entry.link, e)
 
-    return count
+        results[feed_id] = doc_ids
+
+    return results
