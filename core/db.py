@@ -104,6 +104,40 @@ def save_summary(doc_id: str, summary: str):
             cur.execute(query, {"id": doc_id, "summary": summary})
     conn.close()
 
+def fetch_summaries_since(published_since: int, novelty_threshold: float | None = None) -> list[dict]:
+    conds = [
+        "summary IS NOT NULL",
+        "published_at >= NOW() - INTERVAL '1 day' * %(published_since)s",
+    ]
+    if novelty_threshold is not None:
+        conds.append("embedding IS NOT NULL")
+
+    where = " AND ".join(conds)
+    query = f"""
+    SELECT d1.id, d1.title, d1.summary,
+        1 - (
+            SELECT d2.embedding <=> d1.embedding
+            FROM documents d2
+            WHERE d2.id != d1.id AND d2.embedding IS NOT NULL
+            ORDER BY d2.embedding <=> d1.embedding
+            LIMIT 1
+        ) AS novelty_score
+    FROM documents d1
+    WHERE {where}
+    ORDER BY d1.published_at DESC;
+    """
+    conn = get_connection()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(query, {"published_since": published_since})
+            rows = cur.fetchall()
+    conn.close()
+    docs = [{"id": r[0], "title": r[1], "summary": r[2], "novelty_score": r[3]} for r in rows]
+    if novelty_threshold is not None:
+        docs = [d for d in docs if d["novelty_score"] is not None and d["novelty_score"] > novelty_threshold]
+    return docs
+
+
 def fetch_documents_without_embeddings(batch_size: int = 100) -> list[dict]:
     query = """
     SELECT id, title, description, content

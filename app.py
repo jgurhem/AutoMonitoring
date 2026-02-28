@@ -1,3 +1,4 @@
+import argparse
 import io
 import logging
 import re
@@ -13,6 +14,11 @@ import streamlit as st
 import core.db as db
 
 st.set_page_config(page_title="Monitoring", layout="wide", page_icon="📡")
+
+_arg_parser = argparse.ArgumentParser(add_help=False)
+_arg_parser.add_argument("--model", default="mixtral")
+_args, _ = _arg_parser.parse_known_args()
+ollama_model = _args.model
 
 page = st.sidebar.radio("Navigation", ["Browse", "Stats", "Semantic Search", "Processing"])
 
@@ -158,7 +164,7 @@ elif page == "Semantic Search":
 elif page == "Processing":
     st.title("Processing")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         st.subheader("Deduplicate")
@@ -195,6 +201,25 @@ elif page == "Processing":
                     st.session_state["proc_output"] = capture_run(cluster_main)
                 finally:
                     sys.argv = old_argv
+
+    with col4:
+        st.subheader("Digest")
+        st.write("Generate a meta-summary of recent article summaries.")
+        digest_days = st.number_input("Published last N days", min_value=1, max_value=15, value=7, key="digest_days")
+        digest_novelty = st.checkbox("Novel articles only", key="digest_novelty")
+        digest_threshold = None
+        if digest_novelty:
+            digest_threshold = st.slider("Novelty threshold", 0.0, 1.0, 0.5, 0.05, key="digest_threshold")
+        if st.button("Run digest"):
+            with st.spinner("Generating digest..."):
+                from processors.digest import main as digest_main
+                st.session_state["proc_output"] = capture_run(
+                    lambda: digest_main(
+                        published_since=int(digest_days),
+                        novelty_threshold=digest_threshold,
+                        model=ollama_model,
+                    )
+                )
 
     if "proc_output" in st.session_state:
         st.divider()
