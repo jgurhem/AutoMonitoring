@@ -179,7 +179,7 @@ if page == "Browse":
     )
 
     df = pd.DataFrame(rows, columns=["id", "source", "title", "published_at", "url", "read_at"])
-    df["read"] = df["read_at"].apply(lambda x: "✓" if x else "")
+    df["read"] = df["read_at"].apply(lambda x: "✓" if pd.notna(x) else "")
     unread = int(df["read_at"].isna().sum())
     st.caption(f"{total} documents ({unread} unread on this page)")
 
