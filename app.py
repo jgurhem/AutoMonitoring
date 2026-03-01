@@ -18,8 +18,20 @@ st.set_page_config(page_title="Monitoring", layout="wide", page_icon="📡")
 # ─── Auth gate ───────────────────────────────────────────────────────────────
 
 if "user" not in st.session_state:
-    from ui.login import show as show_login
-    show_login()
+    _auth_tab = st.session_state.get("auth_tab", "Login")
+    col_l, col_r, _ = st.columns([1, 1, 4])
+    if col_l.button("Login", type="primary" if _auth_tab == "Login" else "secondary"):
+        st.session_state["auth_tab"] = "Login"
+        st.rerun()
+    if col_r.button("Register", type="primary" if _auth_tab == "Register" else "secondary"):
+        st.session_state["auth_tab"] = "Register"
+        st.rerun()
+    if _auth_tab == "Register":
+        from ui.register import show as show_register
+        show_register()
+    else:
+        from ui.login import show as show_login
+        show_login()
     st.stop()
 
 user = current_user()
