@@ -45,36 +45,45 @@ def collect_arxiv_searches(searches: list[dict]) -> dict[int, list[str]]:
             sort_by=arxiv.SortCriterion.SubmittedDate,
         )
         seen = set()
-        for paper in client.results(search):
-            if paper.entry_id in seen:
+        try:
+            for paper in client.results(search):
+                if paper.entry_id in seen:
+                    continue
+                seen.add(paper.entry_id)
+
+                description = paper.summary.strip()
+
+                if is_recently_collected(paper.entry_id):
+                    logger.debug("Ignoré (déjà collecté): %s", paper.entry_id)
+                    continue
+
+                html_url = paper.entry_id.replace("/abs/", "/html/")
+                content = fetch_arxiv_content(html_url)
+
+                doc_id = hash_text(description)
+                logger.info("Inséré: %s", paper.title)
+                insert_document({
+                    "id": doc_id,
+                    "source": "arxiv",
+                    "title": paper.title,
+                    "authors": [a.name for a in paper.authors],
+                    "url": paper.entry_id,
+                    "description": description,
+                    "content": content,
+                    "categories": paper.categories,
+                    "published": paper.published.isoformat(),
+                    "updated_at": paper.updated.isoformat(),
+                    "collected_at": datetime.now(timezone.utc).isoformat(),
+                })
+                doc_ids.append(doc_id)
+        except arxiv.HTTPError as e:
+            logger.error("Error collecting search_id %d: %s", search_id, e)
+            if e.code == 503:
+                logger.error("Service unavailable. Skipping search_id %d for now.", search_id)
                 continue
-            seen.add(paper.entry_id)
-
-            description = paper.summary.strip()
-
-            if is_recently_collected(paper.entry_id):
-                logger.debug("Ignoré (déjà collecté): %s", paper.entry_id)
+            if e.code == 429:
+                logger.error("Rate limit exceeded. Skipping search_id %d for now.", search_id)
                 continue
-
-            html_url = paper.entry_id.replace("/abs/", "/html/")
-            content = fetch_arxiv_content(html_url)
-
-            doc_id = hash_text(description)
-            logger.info("Inséré: %s", paper.title)
-            insert_document({
-                "id": doc_id,
-                "source": "arxiv",
-                "title": paper.title,
-                "authors": [a.name for a in paper.authors],
-                "url": paper.entry_id,
-                "description": description,
-                "content": content,
-                "categories": paper.categories,
-                "published": paper.published.isoformat(),
-                "updated_at": paper.updated.isoformat(),
-                "collected_at": datetime.now(timezone.utc).isoformat(),
-            })
-            doc_ids.append(doc_id)
 
         update_arxiv_search_collected_at(search_id)
         results[search_id] = doc_ids
