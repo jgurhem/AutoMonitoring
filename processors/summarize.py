@@ -42,16 +42,18 @@ def run(model: str = MODEL, num_predict: int = 2048):
             if not body:
                 logger.info("Skipping %s (no content)", doc["id"])
                 continue
-            try:
-                summary = chain.invoke({"title": doc["title"] or "", "body": body})
-                save_summary(doc["id"], summary.strip())
-                logger.info("Summarized: %s", doc["title"])
-                total += 1
-            except Exception as e:
-                logger.error("Failed %s: %s", doc["id"], e)
-                if "status code: 500" in str(e):
-                    logger.error("Model unavailable, aborting.")
-                    return
+            for attempt in range(1, 6):
+                try:
+                    summary = chain.invoke({"title": doc["title"] or "", "body": body})
+                    save_summary(doc["id"], summary.strip())
+                    logger.info("Summarized: %s", doc["title"])
+                    total += 1
+                    break
+                except Exception as e:
+                    logger.error("Failed %s (attempt %d/5): %s", doc["id"], attempt, e)
+                    if attempt == 5:
+                        logger.error("Giving up on %s after 5 attempts.", doc["id"])
+                        raise e
 
     logger.info("Done. %d documents summarized.", total)
 
@@ -78,5 +80,13 @@ def digest(
     llm = OllamaLLM(model=model, temperature=0.3, num_predict=num_predict)
     chain = DIGEST_PROMPT | llm
 
-    result = chain.invoke({"count": len(docs), "entries": entries})
-    logger.info("Digest:\n%s", result.strip())
+    for attempt in range(1, 6):
+        try:
+            result = chain.invoke({"count": len(docs), "entries": entries})
+            logger.info("Digest:\n%s", result.strip())
+            break
+        except Exception as e:
+            logger.error("Digest failed (attempt %d/5): %s", attempt, e)
+            if attempt == 5:
+                logger.error("Giving up on digest after 5 attempts.")
+                raise e
