@@ -78,10 +78,10 @@ def collect_arxiv_searches(searches: list[dict]) -> dict[int, list[str]]:
                 doc_ids.append(doc_id)
         except arxiv.HTTPError as e:
             logger.error("Error collecting search_id %d: %s", search_id, e)
-            if e.code == 503:
+            if e.status == 503:
                 logger.error("Service unavailable. Skipping search_id %d for now.", search_id)
                 continue
-            if e.code == 429:
+            if e.status == 429:
                 logger.error("Rate limit exceeded. Skipping search_id %d for now.", search_id)
                 continue
 
