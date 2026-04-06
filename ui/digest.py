@@ -1,10 +1,7 @@
-import re
-import textwrap
-
 import streamlit as st
 
 
-def show(user, capture_run, wrap_width, ollama_model):
+def show(user, ollama_model):
     st.title("Digest")
     st.write("Generate a meta-summary of recent article summaries.")
 
@@ -18,22 +15,29 @@ def show(user, capture_run, wrap_width, ollama_model):
 
     if st.button("Run digest"):
         with st.spinner("Generating digest..."):
-            from processors.summarize import digest as digest_main
-            st.session_state["proc_output"] = capture_run(
-                lambda: digest_main(
+            from processors.summarize import digest as digest_fn
+            try:
+                result = digest_fn(
                     published_since=int(digest_days),
                     novelty_threshold=digest_threshold,
                     model=ollama_model,
                     user_id=user["id"],
                 )
-            )
+                st.session_state["digest_result"] = result
+            except Exception as e:
+                st.error(str(e))
 
-    if "proc_output" in st.session_state:
+    if "digest_result" in st.session_state:
+        result = st.session_state["digest_result"]
         st.divider()
-        clean = re.sub(r"\033\[[0-9;]*m", "", st.session_state["proc_output"] or "Done.")
-        wrapped = "\n".join(
-            textwrap.fill(line, width=wrap_width, subsequent_indent="", break_long_words=True)
-            if len(line) > wrap_width else line
-            for line in clean.splitlines()
-        )
-        st.code(wrapped)
+        if result["digest_text"] is None:
+            st.info("No articles found for the given parameters.")
+        else:
+            st.markdown(result["digest_text"])
+            st.subheader(f"Sources ({len(result['articles'])} articles)")
+            for article in result["articles"]:
+                with st.expander(article.get("title") or "(no title)"):
+                    if article.get("novelty_score") is not None:
+                        st.caption(f"Novelty: {article['novelty_score']:.2f}")
+                    summary = article.get("summary") or ""
+                    st.write(summary[:400] + ("..." if len(summary) > 400 else ""))

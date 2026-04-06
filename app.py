@@ -1,8 +1,4 @@
 import argparse
-import io
-import logging
-
-from streamlit_js_eval import streamlit_js_eval
 
 import streamlit as st
 
@@ -39,25 +35,6 @@ _arg_parser.add_argument("--model", default="mixtral")
 _args, _ = _arg_parser.parse_known_args()
 ollama_model = _args.model
 
-_screen_width = streamlit_js_eval(js_expressions="window.innerWidth", key="screen_width")
-wrap_width = max(80, int((_screen_width - 304) / 7.5)) if _screen_width else 120
-
-
-def capture_run(fn):
-    buf = io.StringIO()
-    handler = logging.StreamHandler(buf)
-    handler.setFormatter(logging.Formatter("%(message)s"))
-    root = logging.getLogger()
-    root.addHandler(handler)
-    try:
-        fn()
-    except Exception as e:
-        buf.write(f"\nERROR: {e}\n")
-    finally:
-        root.removeHandler(handler)
-    return buf.getvalue()
-
-
 # ─── Sidebar extras ──────────────────────────────────────────────────────────
 
 with st.sidebar:
@@ -87,9 +64,9 @@ from ui.admin_dedup import show as _admin_dedup
 main_pages = [
     st.Page(lambda: _browse(user),                                        title="Browse",          icon=":material/article:",         url_path="browse",  default=True),
     st.Page(lambda: _semantic_search(user),                               title="Semantic Search", icon=":material/search:",          url_path="search"),
-    st.Page(lambda: _novelty(user, capture_run, wrap_width),              title="Novelty",         icon=":material/auto_awesome:",    url_path="novelty"),
-    st.Page(lambda: _cluster(user, capture_run, wrap_width),              title="Cluster",         icon=":material/hub:",             url_path="cluster"),
-    st.Page(lambda: _digest(user, capture_run, wrap_width, ollama_model), title="Digest",          icon=":material/summarize:",       url_path="digest"),
+    st.Page(lambda: _novelty(user),              title="Novelty",         icon=":material/auto_awesome:",    url_path="novelty"),
+    st.Page(lambda: _cluster(user),              title="Cluster",         icon=":material/hub:",             url_path="cluster"),
+    st.Page(lambda: _digest(user, ollama_model), title="Digest",          icon=":material/summarize:",       url_path="digest"),
     st.Page(lambda: _favorites(user),                                     title="Favorites",       icon=":material/star:",            url_path="favorites"),
     st.Page(lambda: _profile(user),                                       title="Profile",         icon=":material/person:",          url_path="profile"),
 ]

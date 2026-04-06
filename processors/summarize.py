@@ -67,8 +67,7 @@ def digest(
 ):
     docs = fetch_summaries_since(published_since, novelty_threshold, user_id=user_id)
     if not docs:
-        logger.info("No articles found for the given parameters.")
-        return
+        return {"digest_text": None, "articles": []}
 
     logger.info("Generating digest from %d articles...", len(docs))
 
@@ -80,13 +79,16 @@ def digest(
     llm = OllamaLLM(model=model, temperature=0.3, num_predict=num_predict)
     chain = DIGEST_PROMPT | llm
 
+    result = None
     for attempt in range(1, 6):
         try:
             result = chain.invoke({"count": len(docs), "entries": entries})
-            logger.info("Digest:\n%s", result.strip())
+            logger.info("Digest complete")
             break
         except Exception as e:
             logger.error("Digest failed (attempt %d/5): %s", attempt, e)
             if attempt == 5:
                 logger.error("Giving up on digest after 5 attempts.")
                 raise e
+
+    return {"digest_text": result.strip(), "articles": docs}

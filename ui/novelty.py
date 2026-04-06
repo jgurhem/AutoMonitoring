@@ -1,10 +1,7 @@
-import re
-import textwrap
-
 import streamlit as st
 
 
-def show(user, capture_run, wrap_width):
+def show(user):
     st.title("Novelty")
     st.write("Score documents by how different they are from the rest.")
 
@@ -18,14 +15,23 @@ def show(user, capture_run, wrap_width):
         with st.spinner("Computing novelty scores..."):
             from processors.novelty import main as novelty_main
             kwargs = {novelty_time_field: int(novelty_days), "user_id": user["id"], "threshold": novelty_threshold}
-            st.session_state["proc_output"] = capture_run(lambda: novelty_main(**kwargs))
+            try:
+                st.session_state["novelty_result"] = novelty_main(**kwargs)
+            except Exception as e:
+                st.error(str(e))
 
-    if "proc_output" in st.session_state:
+    if "novelty_result" in st.session_state:
+        result = st.session_state["novelty_result"]
         st.divider()
-        clean = re.sub(r"\033\[[0-9;]*m", "", st.session_state["proc_output"] or "Done.")
-        wrapped = "\n".join(
-            textwrap.fill(line, width=wrap_width, subsequent_indent="", break_long_words=True)
-            if len(line) > wrap_width else line
-            for line in clean.splitlines()
-        )
-        st.code(wrapped)
+        st.caption(f"{len(result['docs'])} novel / {result['total_scored']} total (threshold={result['threshold']})")
+
+        for doc in result["docs"]:
+            col_score, col_title = st.columns([1, 8])
+            col_score.markdown(f"`{doc['novelty_score']:.2f}`")
+            if col_title.button(doc["title"], key=f"nov_{doc['id']}"):
+                st.session_state["novelty_selected"] = doc["id"]
+
+    if "novelty_selected" in st.session_state:
+        st.divider()
+        from ui._document import show_document
+        show_document(user, st.session_state["novelty_selected"])

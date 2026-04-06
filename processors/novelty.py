@@ -21,10 +21,13 @@ def main(published_since=7, collected_since=None, updated_since=None, user_id=No
     novel = [d for d in scored if d["novelty_score"] > threshold]
     novel.sort(key=lambda d: d["novelty_score"], reverse=True)
 
-    for d in novel:
-        logger.info(f"[{d['novelty_score']:.4f}] {d['id']} \"{d['title']}\"")
-
     logger.info(
-        f"Summary: {len(novel)} novel / {len(scored)} total "
-        f"(threshold={threshold})"
+        "Novelty: %d novel / %d total (threshold=%.2f)",
+        len(novel), len(scored), threshold,
     )
+
+    return {
+        "docs": [{"id": d["id"], "title": d["title"], "novelty_score": d["novelty_score"]} for d in novel],
+        "total_scored": len(scored),
+        "threshold": threshold,
+    }
