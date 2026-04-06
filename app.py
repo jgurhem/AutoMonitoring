@@ -45,7 +45,7 @@ ollama_model = _args.model
 
 PAGE_SIZE = 50
 
-nav_pages = ["Browse", "Semantic Search", "Processing", "Favorites", "Profile"]
+nav_pages = ["Browse", "Semantic Search", "Novelty", "Cluster", "Digest", "Favorites", "Profile"]
 if user.get("is_admin"):
     nav_pages += ["Stats", "Admin: Users", "Admin: Dedup"]
 
@@ -283,67 +283,25 @@ elif page == "Semantic Search":
             show_document(df.iloc[sel.selection.rows[0]]["id"])
 
 
-# ─── Processing ───────────────────────────────────────────────────────────────
+# ─── Novelty ──────────────────────────────────────────────────────────────────
 
-elif page == "Processing":
-    st.title("Processing")
+elif page == "Novelty":
+    from ui.novelty import show as show_novelty
+    show_novelty(user, capture_run, wrap_width)
 
-    # Load user's saved defaults
-    pref_novelty = float(user.get("pref_novelty_threshold") or 0.6)
-    pref_digest_days = int(user.get("pref_digest_days") or 7)
 
-    col1, col2, col3 = st.columns(3)
+# ─── Cluster ──────────────────────────────────────────────────────────────────
 
-    with col1:
-        st.subheader("Novelty")
-        st.write("Score documents by how different they are from the rest.")
-        novelty_threshold = st.slider("Threshold", 0.0, 1.0, pref_novelty, 0.05, key="novelty_threshold")
-        novelty_time_field = st.selectbox("Filter by", ["published_since", "collected_since", "updated_since"], key="novelty_time_field")
-        novelty_days = st.number_input("Last N days", min_value=1, max_value=365, value=7, key="novelty_days")
-        if st.button("Run novelty"):
-            with st.spinner("Computing novelty scores..."):
-                from processors.novelty import main as novelty_main
-                kwargs = {novelty_time_field: int(novelty_days), "user_id": user["id"], "threshold": novelty_threshold}
-                st.session_state["proc_output"] = capture_run(lambda: novelty_main(**kwargs))
+elif page == "Cluster":
+    from ui.cluster import show as show_cluster
+    show_cluster(user, capture_run, wrap_width)
 
-    with col2:
-        st.subheader("Cluster")
-        st.write("Group documents into topic clusters using HDBSCAN.")
-        new_only = st.checkbox("Show only new articles")
-        if st.button("Run cluster"):
-            with st.spinner("Clustering..."):
-                from processors.cluster import main as cluster_main
-                st.session_state["proc_output"] = capture_run(lambda: cluster_main(new=new_only, user_id=user["id"]))
 
-    with col3:
-        st.subheader("Digest")
-        st.write("Generate a meta-summary of recent article summaries.")
-        digest_days = st.number_input("Published last N days", min_value=1, max_value=15, value=pref_digest_days, key="digest_days")
-        digest_novelty = st.checkbox("Novel articles only", key="digest_novelty")
-        digest_threshold = None
-        if digest_novelty:
-            digest_threshold = st.slider("Novelty threshold", 0.0, 1.0, 0.5, 0.05, key="digest_threshold")
-        if st.button("Run digest"):
-            with st.spinner("Generating digest..."):
-                from processors.summarize import digest as digest_main
-                st.session_state["proc_output"] = capture_run(
-                    lambda: digest_main(
-                        published_since=int(digest_days),
-                        novelty_threshold=digest_threshold,
-                        model=ollama_model,
-                        user_id=user["id"],
-                    )
-                )
+# ─── Digest ───────────────────────────────────────────────────────────────────
 
-    if "proc_output" in st.session_state:
-        st.divider()
-        clean = re.sub(r"\033\[[0-9;]*m", "", st.session_state["proc_output"] or "Done.")
-        wrapped = "\n".join(
-            textwrap.fill(line, width=wrap_width, subsequent_indent="", break_long_words=True)
-            if len(line) > wrap_width else line
-            for line in clean.splitlines()
-        )
-        st.code(wrapped)
+elif page == "Digest":
+    from ui.digest import show as show_digest
+    show_digest(user, capture_run, wrap_width, ollama_model)
 
 
 # ─── Favorites ────────────────────────────────────────────────────────────────
